@@ -49,9 +49,11 @@ route, and no plan errors. Umbraco is unchanged.
 dotnet run --project src/KenticoMigrator -- migrate --profile profiles/sample.json
 ```
 
-Expected: exit code 0; target counts equal the "expected after migrate" column in
-`sample/README.md`; the site shows the sample pages with images served from Azurite
-(`http://127.0.0.1:10000/devstoreaccount1/media/...`).
+Expected: exit code 0; the console shows `schema: 15 Created`, `media: 19 Created` (9 folders, 9 images and 1 file), `documents: 23 Created`,
+`redirects: 27 planned; 27 created, 0 existing, 0 failed` and `links: 8 rewritten, 1 external, 1 to the application,
+1 unresolved`. The site shows the sample pages with their images and files at `https://localhost:44317/media/<token>/<file>`:
+the host serves them from the Azurite `media` container (nothing is stored on the host's disk). The back office lists the 27
+redirects under "URL Redirect Management".
 
 ## 5. Old URLs
 
@@ -59,8 +61,8 @@ Expected: exit code 0; target counts equal the "expected after migrate" column i
 scripts/check-urls.sh https://localhost:44317 sample/expected-urls.txt
 ```
 
-Expected: every line prints `OK` (`200` for kept paths, `301` to the right page for `.aspx`,
-aliases, the old home path and the brand with a space in its name).
+Expected: every line prints `OK` and the summary says `25 OK, 0 FAIL` (`200` for kept paths and for `/Home`, which is served
+at its own URL segment, `301` to the right page for `.aspx`, aliases and the brand with a space in its name).
 
 ## 6. Re-run and editor protection
 
