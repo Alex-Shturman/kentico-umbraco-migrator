@@ -500,3 +500,20 @@ UPDATE CONTENT_Article SET ArticleText =
  N'<p>Store the kayak off the ground, away from direct sun. Buying a <a href="/cart">new cover</a>? See the <a href="/Seasonal/Deals.aspx">seasonal deals</a> and our <a href="/Story">story</a>.</p>'
 WHERE ArticleID = 3;
 GO
+
+-- ============================================================================
+-- Part 5: aliases and URL paths
+-- ============================================================================
+
+-- /contact repeats the page's own path in lower case (the old links used both); /visit is a short alias.
+-- The third alias is a wildcard route on the excluded application page (it must be reported, not planned).
+SET IDENTITY_INSERT CMS_DocumentAlias ON;
+INSERT INTO CMS_DocumentAlias (AliasID, AliasNodeID, AliasCulture, AliasURLPath, AliasExtensions, AliasWildcardRule, AliasPriority, AliasGUID, AliasLastModified, AliasSiteID) VALUES
+(1, 5,  N'en-US', N'/contact',         NULL, NULL,               NULL, 'a11a5000-0000-4000-8000-000000000001', '2018-11-06T10:00:00', 1),
+(2, 5,  N'en-US', N'/visit',           NULL, NULL,               NULL, 'a11a5000-0000-4000-8000-000000000002', '2018-11-06T10:00:00', 1),
+(3, 22, N'en-US', N'/{title}-i{ID}',   NULL, N'/{title}-i{ID}',  1,    'a11a5000-0000-4000-8000-000000000003', '2018-11-06T10:00:00', 1);
+SET IDENTITY_INSERT CMS_DocumentAlias OFF;
+
+-- A document whose URL path was set by hand (URL path override).
+UPDATE CMS_Document SET DocumentUrlPath = N'/about-the-shop' WHERE DocumentID = 3;
+GO

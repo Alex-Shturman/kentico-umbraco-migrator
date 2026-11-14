@@ -36,6 +36,8 @@ Other counts:
 | Attachments (current versions, `CMS_Attachment`) | 7 |
 | Attachment history rows (`CMS_AttachmentHistory`, must be ignored) | 1 |
 | Media files (`Media_File`) | 4 (3 on disk, 1 missing) |
+| Links (`href=` in page content and article text) | 12 |
+| Document aliases (`CMS_DocumentAlias`) | 3 (1 of them a wildcard) |
 
 Pages worth knowing:
 
@@ -89,6 +91,15 @@ Twelve `href=` attributes plus one image `src` in total (the restore script prin
 | | `/Story` | page |
 
 Own hosts needed in the profile: `kayaks.example` and `www.kayaks.example`.
+
+## Aliases and URLs
+
+- `/contact` and `/visit` are aliases of `/Contact`. `/{title}-i{ID}` is a wildcard alias on the
+  excluded `/Account/Profile` page (reported, not migrated).
+- `/About` has a hand-set `DocumentUrlPath` of `/about-the-shop`.
+- `expected-urls.txt` lists 25 old URLs with the expected status and final path
+  (`<old url> <status> <final path>`). Final paths for redirects assume Umbraco's lower case URLs
+  and the catalog layout `/catalog/brands/<alias>`; adjust them if a run shows otherwise.
 
 ## Profile values for Track 3
 

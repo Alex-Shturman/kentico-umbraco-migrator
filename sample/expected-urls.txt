@@ -1,0 +1,45 @@
+# Expected behaviour of the migrated sample site: <old url> <expected status> <expected final path>
+#
+# Status is the first response without following redirects. The final path is where the request ends:
+# the redirect target for 301, the request path itself for 200 and 404. Old URLs are percent-encoded.
+# Umbraco serves paths case-insensitively and generates lower case URLs, so a path that differs only
+# in case is a 200 without a redirect.
+
+# Kept paths, served directly
+/ 200 /
+/About 200 /About
+/Story 200 /Story
+/Contact 200 /Contact
+/Articles/Paddling-Basics 200 /Articles/Paddling-Basics
+/Catalog/Brands 200 /Catalog/Brands
+/Catalog/Brands/Sea-Spirit 200 /Catalog/Brands/Sea-Spirit
+/Catalog/Products/Pacific-Touring-Kayak 200 /Catalog/Products/Pacific-Touring-Kayak
+
+# Mixed case
+/ABOUT 200 /ABOUT
+/catalog/brands/AQUILA 200 /catalog/brands/AQUILA
+
+# Old .aspx form
+/About.aspx 301 /about
+/Story.aspx 301 /story
+/Articles/Paddling-Basics.aspx 301 /articles/paddling-basics
+
+# Old home path
+/Home 301 /
+/Home.aspx 301 /
+
+# Document alias and URL path override
+/visit 301 /contact
+/about-the-shop 301 /about
+
+# Brand with a space in the name and an old brand route
+/brand-search/Sea%20Spirit 301 /catalog/brands/sea-spirit
+/brand-search/Aquila 301 /catalog/brands/aquila
+
+# Excluded application page, wildcard route, folder without template and pages that are not published
+/Account/Profile 404 /Account/Profile
+/some-title-i123 404 /some-title-i123
+/Catalog 404 /Catalog
+/Draft-Guide 404 /Draft-Guide
+/Old-Offer 404 /Old-Offer
+/Spring-Sale 404 /Spring-Sale
