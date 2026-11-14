@@ -16,6 +16,25 @@ database `Kentico11Sample`.
 
 ## Expected counts
 
-| Item | Count |
+Documents per page type (the first block of the script output):
+
+| Page type | Documents |
 |---|---|
-| `CMS.Root` documents | 1 |
+| `CMS.Root` | 1 |
+| `CMS.Folder` | 2 |
+| `CMS.MenuItem` | 11 |
+| `CMS.Article` | 3 |
+| `DEMO.Brand` | 6 |
+| `DEMO.Product` | 2 |
+
+Pages worth knowing:
+
+- `/Home`, `/About`: one editable region. `/Story`: two regions (`storyintro`, `storybody`); the
+  document stores them in the opposite order of the template. `/Contact`: no text.
+- `/Draft-Guide` (`DocumentCanBePublished = 0`), `/Old-Offer` (archived, also not publishable),
+  `/Spring-Sale` (`DocumentPublishFrom` in 2099): the three pages that are not published.
+- `/Account` (folder) and `/Account/Profile`: the excluded application section.
+- `/Catalog` (folder), `/Catalog/Brands` with 6 brands (`Sea Spirit` and `Wave Rider` have a space
+  in the name) and one brand row, `Driftwood`, without a page.
+- `/Catalog/Products` with 2 products, each linked to a `COM_SKU` row.
+- `/Articles` with 3 articles.
