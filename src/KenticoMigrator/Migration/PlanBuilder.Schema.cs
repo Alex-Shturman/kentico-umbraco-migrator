@@ -186,6 +186,28 @@ public sealed partial class PlanBuilder
         return new Schema([.. dataTypes.Values.OrderBy(d => d.Name, StringComparer.Ordinal).ThenBy(d => d.Key)], documentTypes, templates);
     }
 
+    /// <summary>
+    /// Makes the document types fit the planned tree: types of top-level pages are allowed at the root, and every
+    /// type allows the types of its planned children, so no create call is refused for a structural reason.
+    /// </summary>
+    private static List<TargetDocumentType> ApplyHierarchy(IReadOnlyList<TargetDocumentType> types, IReadOnlyList<TargetDocument> documents)
+    {
+        var typeByKey = documents.ToDictionary(d => d.Key, d => d.TypeAlias);
+        var childAliases = documents
+            .Where(d => d.ParentKey is not null)
+            .GroupBy(d => typeByKey[d.ParentKey!.Value])
+            .ToDictionary(g => g.Key, g => g.Select(d => d.TypeAlias).Distinct().ToList());
+        var rootAliases = documents.Where(d => d.ParentKey is null).Select(d => d.TypeAlias).ToHashSet();
+
+        return [.. types.Select(t => t with
+        {
+            AllowedAtRoot = rootAliases.Contains(t.Alias),
+            AllowedChildAliases = childAliases.TryGetValue(t.Alias, out var extra)
+                ? [.. t.AllowedChildAliases.Union(extra.OrderBy(a => a, StringComparer.Ordinal))]
+                : t.AllowedChildAliases,
+        })];
+    }
+
     private static TargetDocumentType CompositionType(string alias, string name, IReadOnlyList<TargetProperty> properties) =>
         new(Keys.Derived("doctype", alias), alias, name, null, false, [], [], properties, IsElementOrComposition: true);
 

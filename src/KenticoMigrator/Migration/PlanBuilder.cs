@@ -36,12 +36,13 @@ public sealed partial class PlanBuilder
     private MigrationPlan Run()
     {
         var schema = BuildSchema();
+        var documents = BuildDocuments();
         return new MigrationPlan(
             schema.DataTypes,
-            schema.DocumentTypes,
+            ApplyHierarchy(schema.DocumentTypes, documents),
             schema.Templates,
             [],
-            [],
+            documents,
             _skipped,
             _issues);
     }
