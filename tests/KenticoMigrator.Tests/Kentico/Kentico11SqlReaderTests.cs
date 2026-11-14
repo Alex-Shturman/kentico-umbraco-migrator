@@ -22,9 +22,10 @@ public sealed class Kentico11SqlReaderTests
             new Dictionary<string, int>
             {
                 ["CMS.Root"] = 1,
-                ["CMS.Folder"] = 2,
+                ["CMS.Folder"] = 3,
                 ["CMS.MenuItem"] = 11,
                 ["CMS.Article"] = 3,
+                ["CMS.File"] = 2,
                 ["DEMO.Brand"] = 6,
                 ["DEMO.Product"] = 2,
             }.OrderBy(p => p.Key),
@@ -38,7 +39,7 @@ public sealed class Kentico11SqlReaderTests
 
         Assert.Equal("KayakShop", site.SiteName);
         Assert.StartsWith("11.", site.KenticoVersion);
-        Assert.Equal(25, site.Documents.Count);
+        Assert.Equal(28, site.Documents.Count);
 
         var root = Assert.Single(site.Documents, d => d.ClassName == "CMS.Root");
         Assert.Null(root.ParentNodeId);
@@ -106,7 +107,7 @@ public sealed class Kentico11SqlReaderTests
         Assert.Equal(new DateTime(2099, 1, 1), scheduled.PublishFrom);
 
         Assert.True(site.Documents.Single(d => d.AliasPath == "/Home").IsPublished);
-        Assert.Equal(22, site.Documents.Count(d => d.IsPublished));
+        Assert.Equal(25, site.Documents.Count(d => d.IsPublished));
     }
 
     [IntegrationFact]

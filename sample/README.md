@@ -21,11 +21,21 @@ Documents per page type (the first block of the script output):
 | Page type | Documents |
 |---|---|
 | `CMS.Root` | 1 |
-| `CMS.Folder` | 2 |
+| `CMS.Folder` | 3 |
 | `CMS.MenuItem` | 11 |
 | `CMS.Article` | 3 |
+| `CMS.File` | 2 |
 | `DEMO.Brand` | 6 |
 | `DEMO.Product` | 2 |
+
+Other counts:
+
+| Item | Count |
+|---|---|
+| Documents in total | 28 (25 published, 3 not) |
+| Attachments (current versions, `CMS_Attachment`) | 7 |
+| Attachment history rows (`CMS_AttachmentHistory`, must be ignored) | 1 |
+| Media files (`Media_File`) | 4 (3 on disk, 1 missing) |
 
 Pages worth knowing:
 
@@ -38,3 +48,31 @@ Pages worth knowing:
   in the name) and one brand row, `Driftwood`, without a page.
 - `/Catalog/Products` with 2 products, each linked to a `COM_SKU` row.
 - `/Articles` with 3 articles.
+
+## Media
+
+The 7 current attachments:
+
+| Attachment | Page | Kind |
+|---|---|---|
+| `pacific-front.jpg`, `pacific-side.png` | Pacific Touring Kayak | gallery (`Images` group), order 1 and 2 |
+| `river-front.jpg` (order 2), `river-side.jpg` (order 1) | River Runner Kayak | gallery, inserted in reverse order |
+| `about-team.png` | `/About` | unsorted attachment of the page |
+| `paddling-teaser.jpg` | `/Articles/Paddling-Basics` | file field `ArticleTeaserImage` |
+| `paddle-size-guide.pdf` | `/Downloads/Paddle-Size-Guide` | file field of a `CMS.File` node |
+
+`/Downloads/Paddling-Map` is a `CMS.File` node without an attachment: the file lives on the web
+server, so the profile lists it as not uploaded.
+
+The media library `Gallery` has four `Media_File` rows. Three files are committed under
+`sample/media/Gallery/` (`dock.jpg`, `boats/kayak-blue.jpg`, `boats/kayak-red.png`); `missing.jpg`
+is not on disk. A library file is found at `<mediaRoot>/<LibraryFolder>/<FilePath>`.
+
+## Profile values for Track 3
+
+`profiles/sample.json` is owned by Track 3. The sample needs these two values in it:
+
+```json
+"notUploadedPaths": [ "/Downloads/Paddling-Map" ],
+"mediaRoot": "sample/media"
+```
