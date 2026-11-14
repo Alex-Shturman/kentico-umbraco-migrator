@@ -22,8 +22,11 @@ it. Neither sends a delete. Both now compare the method name, so the check is a 
 - The tracked tree is compliant: no client content, only section-level paths, class and column names in
   `profiles/pontoonsonly.json`, aggregate numbers in the docs. `Sources/`, `sources/`, `_work/` and `runs/` are ignored.
 - **Not compliant in the git history (T069).** A deleted planning document that was committed in the first commits contains a
-  brand name from the client's data. The current tree is clean, but the two early commits still hold it. Nothing has been
-  sent to a remote yet. History must be rewritten before the first upload (the owner decides how); this review did not rewrite it.
+  brand name from the client's data. The current tree is clean, but the history still holds the name: commit 587f2e8 is
+  already in the published history (`origin/main`; the repository was uploaded to GitHub when it was created), so the name is
+  public today. Commit 6b5ed47 (local only) also touches the folder of that document. Commits are listed by hash only. A history
+  rewrite and a force-upload need the owner's decision (method, and whether the published copy can be withdrawn); this review did
+  not rewrite or upload anything.
 - Fixed: `*.zip`, `*.7z` and `*.bacpac` are now git-ignored (the client archives named in DISCOVERY.md would otherwise be staged by
   `git add .`).
 - `scripts/check-repo.sh` checks paths and em dashes only; it cannot find client words. A denylist kept outside the repository
@@ -54,6 +57,7 @@ Not compliant in three places (follow-ups, all fixed on 2026-11-14: T066, T067, 
 
 - Data types written by the tool are overwritten when an editor changed their configuration, without `--overwrite-edited`
   (document types merge editor additions, templates carry a hash). Low risk: the data types are the tool's own editors.
-- The media file existence check in `Program.cs` does not apply the rooted-path guard of the reader; a hostile database could make
-  it probe a file outside the media root. Needs a malicious source.
+- The media file existence check in `Program.cs` did not apply the rooted-path guard of the reader; a hostile database could make
+  it probe a file outside the media root. Needs a malicious source. Fixed later: the reader and the check now share
+  `Kentico/MediaPaths.cs`, which treats a rooted or escaping path as missing.
 - The review hint "re-run with `--overwrite-edited`" for a page that is unpublished and unedited does not change anything.
