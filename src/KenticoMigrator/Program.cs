@@ -6,6 +6,9 @@ using KenticoMigrator.Umbraco;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
+const string DefaultBaseUrl = "https://localhost:44317";
+const string DefaultClientId = "umbraco-back-office-migrator";
+
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
 {
@@ -45,11 +48,20 @@ try
     ManagementApiClient? client = null;
     try
     {
-        if (!string.IsNullOrWhiteSpace(config["Umbraco:BaseUrl"]) && !string.IsNullOrWhiteSpace(config["Umbraco:ClientSecret"]))
+        // The secret is the switch: without it Umbraco counts as not configured. The other keys default to the local host
+        // of host/README.md (the quickstart sets only the two secrets).
+        if (!string.IsNullOrWhiteSpace(config["Umbraco:ClientSecret"]))
         {
+            var baseUrl = config["Umbraco:BaseUrl"] is { Length: > 0 } url ? url : DefaultBaseUrl;
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri) || baseUri.Scheme is not ("http" or "https"))
+            {
+                Console.Error.WriteLine("Umbraco:BaseUrl must be an absolute http or https URL.");
+                return ExitCodes.ConfigurationOrPlanError;
+            }
+
             client = ManagementApiClient.Create(new UmbracoOptions(
-                config["Umbraco:BaseUrl"]!,
-                config["Umbraco:ClientId"] is { Length: > 0 } id ? id : "umbraco-back-office-migrator",
+                baseUrl,
+                config["Umbraco:ClientId"] is { Length: > 0 } id ? id : DefaultClientId,
                 config["Umbraco:ClientSecret"]!,
                 bool.TryParse(config["Umbraco:AllowUntrustedCertificate"], out var untrusted) && untrusted));
         }

@@ -83,6 +83,20 @@ public sealed class DocumentSync
             return await PublishAsync(doc, ItemOutcome.Created, ct).ConfigureAwait(false);
         }
 
+        // An editor deleted the page, which only moved it to the recycle bin and left its key taken. The key cannot be
+        // created again, so the page is restored under its planned parent and written like a new one (quickstart step 7).
+        if (current["isTrashed"]?.GetValue<bool>() == true)
+        {
+            if (options.Preview)
+            {
+                return ItemOutcome.WouldCreate;
+            }
+
+            await RestoreAsync(doc, ct).ConfigureAwait(false);
+            await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
+            return await PublishAsync(doc, ItemOutcome.Created, ct).ConfigureAwait(false);
+        }
+
         // R5: an item whose current owned values no longer hash to what the tool stored was changed by an editor.
         var siblings = await ChildrenOfAsync(doc.ParentKey, ct).ConfigureAwait(false);
         var moved = !siblings.Contains(doc.Key);
@@ -126,6 +140,14 @@ public sealed class DocumentSync
 
         await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
         return await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
+    }
+
+    private async Task RestoreAsync(TargetDocument doc, CancellationToken ct)
+    {
+        var siblings = await ChildrenOfAsync(doc.ParentKey, ct).ConfigureAwait(false);
+        var body = new RestoreRequest(doc.ParentKey is { } parent ? new IdRef(parent) : null);
+        await _api.SendAsync(HttpMethod.Put, $"/recycle-bin/document/{doc.Key:D}/restore", body, ct).ConfigureAwait(false);
+        siblings.Add(doc.Key);
     }
 
     // Puts a document that an editor moved back under its planned parent, at the end of that parent's children.

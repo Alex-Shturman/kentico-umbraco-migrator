@@ -46,11 +46,16 @@ internal sealed class EndToEndHost : IDisposable
     }
 
     /// <summary>Runs a command with the sample profile and a fresh run folder.</summary>
-    public async Task<EndToEndRun> RunAsync(string command, bool overwriteEdited = false, CancellationToken ct = default)
+    public async Task<EndToEndRun> RunAsync(string command, bool overwriteEdited = false, CancellationToken ct = default, Func<IKenticoReader, IKenticoReader>? wrapReader = null)
     {
         var profile = SourceFactory.SampleProfile();
         var mediaRoot = SampleDatabase.MediaRoot;
-        var reader = new Kentico11SqlReader(SampleDatabase.ConnectionString!, mediaRoot);
+        IKenticoReader reader = new Kentico11SqlReader(SampleDatabase.ConnectionString!, mediaRoot);
+        if (wrapReader is not null)
+        {
+            reader = wrapReader(reader);
+        }
+
         var output = new StringWriter();
         var runDir = Path.Combine(Path.GetTempPath(), "km-e2e-" + Guid.NewGuid().ToString("N"));
 
@@ -59,6 +64,17 @@ internal sealed class EndToEndHost : IDisposable
             new RunRequest(command, profile, runDir, overwriteEdited, file => File.Exists(Path.Combine(mediaRoot, file.LibraryFolder, file.FilePath))),
             ct);
         return new EndToEndRun(exit, output.ToString(), runDir);
+    }
+
+    /// <summary>The per-item results of a run, read from its <c>report.json</c>.</summary>
+    public static IReadOnlyList<(string Kind, string Type, string OldPath, string Outcome)> Items(EndToEndRun run)
+    {
+        using var report = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(run.RunDir, "report.json")));
+        return [.. report.RootElement.GetProperty("items").EnumerateArray().Select(i => (
+            i.GetProperty("kind").GetString()!,
+            i.GetProperty("typeAlias").GetString()!,
+            i.GetProperty("oldPath").GetString()!,
+            i.GetProperty("outcome").GetString()!))];
     }
 
     public void Dispose() => _client.Dispose();

@@ -87,3 +87,5 @@ internal sealed record SortItemRequest(Guid Id, int SortOrder);
 internal sealed record SortRequest(IdRef? Parent, IReadOnlyList<SortItemRequest> Sorting);
 
 internal sealed record MoveRequest(IdRef? Target);
+
+internal sealed record RestoreRequest(IdRef? Target);

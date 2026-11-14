@@ -26,11 +26,13 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
 
     public List<Call> Calls { get; } = [];
 
+    public int RedirectTotal { get; set; }
+
     /// <summary>Built-in data types by name (served by the filter endpoint).</summary>
     public Dictionary<string, Guid> BuiltInDataTypes { get; } = new(StringComparer.Ordinal);
 
     /// <summary>Returns the exception to throw for a call, or null to let it through.</summary>
-    public Func<Call, UmbracoApiException?>? Failure { get; set; }
+    public Func<Call, Exception?>? Failure { get; set; }
 
     public IEnumerable<Call> Writes => Calls.Where(c => c.IsWrite);
 
@@ -50,8 +52,18 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
     {
         item["id"] = id.ToString("D");
         Items(collection)[id] = item;
-        _parents[id] = parent;
-        _order[id] = _nextOrder++;
+        if (item["isTrashed"]?.GetValue<bool>() != true)
+        {
+            _parents[id] = parent;
+            _order[id] = _nextOrder++;
+        }
+    }
+
+    /// <summary>Takes a document out of the tree listing (it stays readable by key, like an item in the recycle bin).</summary>
+    public void Remove(Guid id)
+    {
+        _parents.Remove(id);
+        _order.Remove(id);
     }
 
     public Task<JsonNode?> GetAsync(string path, CancellationToken ct)
@@ -75,6 +87,11 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
             }
 
             return Task.FromResult<JsonNode?>(new JsonObject { ["total"] = items.Count, ["items"] = items });
+        }
+
+        if (route == "/redirect-management")
+        {
+            return Task.FromResult<JsonNode?>(new JsonObject { ["total"] = RedirectTotal, ["items"] = new JsonArray() });
         }
 
         if (parts is ["tree", var kind, "root" or "children"])
@@ -143,6 +160,15 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
         if (method == HttpMethod.Put && parts.Length == 3 && parts[2] == "move")
         {
             _parents[Guid.Parse(parts[1])] = node?["target"]?["id"]?.GetValue<string>() is { } t ? Guid.Parse(t) : null;
+            return Ok(HttpStatusCode.OK);
+        }
+
+        if (method == HttpMethod.Put && parts is ["recycle-bin", "document", var trashedId, "restore"])
+        {
+            var key = Guid.Parse(trashedId);
+            Stored("document", key)!["isTrashed"] = false;
+            _parents[key] = node?["target"]?["id"]?.GetValue<string>() is { } t ? Guid.Parse(t) : null;
+            _order[key] = _nextOrder++;
             return Ok(HttpStatusCode.OK);
         }
 

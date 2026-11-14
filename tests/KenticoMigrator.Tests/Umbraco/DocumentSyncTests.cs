@@ -313,4 +313,42 @@ public sealed class DocumentSyncTests
         Assert.Equal(ItemOutcome.WouldUpdate, preview.Single().Outcome);
         Assert.Empty(api.Writes);
     }
+
+    [Fact]
+    public async Task Page_in_the_recycle_bin_is_restored_and_counts_as_created()
+    {
+        var api = new FakeUmbracoApi();
+        var sync = NewSync(api);
+        var docs = new[] { Doc(1, null, "Root", publish: true), Doc(2, 1, "Child", publish: true, title: "Kept") };
+        await sync.SyncAsync(docs, Options, Ct);
+        api.Stored("document", GuidFor(2))!["isTrashed"] = true;
+        api.Remove(GuidFor(2));
+        api.Calls.Clear();
+
+        var results = await NewSync(api).SyncAsync(docs, Options, Ct);
+
+        Assert.Equal([ItemOutcome.Unchanged, ItemOutcome.Created], results.Select(r => r.Outcome));
+        Assert.Contains(api.Writes, c => c.Path == $"/recycle-bin/document/{GuidFor(2):D}/restore" && c.Body!["target"]!["id"]!.GetValue<string>() == GuidFor(1).ToString("D"));
+        Assert.Equal([GuidFor(2)], api.PublishedKeys);
+        Assert.Equal([GuidFor(2)], api.ChildrenOf(GuidFor(1)));
+
+        var again = await NewSync(api).SyncAsync(docs, Options, Ct);
+        Assert.All(again, r => Assert.Equal(ItemOutcome.Unchanged, r.Outcome));
+    }
+
+    [Fact]
+    public async Task Preview_reports_would_create_for_a_page_in_the_recycle_bin()
+    {
+        var api = new FakeUmbracoApi();
+        var docs = new[] { Doc(1, null, "Root") };
+        await NewSync(api).SyncAsync(docs, Options, Ct);
+        api.Stored("document", GuidFor(1))!["isTrashed"] = true;
+        api.Remove(GuidFor(1));
+        api.Calls.Clear();
+
+        var results = await NewSync(api).SyncAsync(docs, new SyncOptions(Preview: true), Ct);
+
+        Assert.Equal(ItemOutcome.WouldCreate, results.Single().Outcome);
+        Assert.Empty(api.Writes);
+    }
 }
