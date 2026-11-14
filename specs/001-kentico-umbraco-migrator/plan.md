@@ -112,13 +112,17 @@ src/KenticoMigrator/                  # console tool
 ├── Umbraco/
 │   ├── ManagementApiClient.cs        # token, HTTP, retry on 401
 │   ├── ApiModels.cs                  # request/response records actually used
+│   ├── SyncResults.cs                # ItemOutcome, ItemResult, MissingInSource
+│   ├── Fingerprint.cs                # SHA-256 of owned values (R5)
+│   ├── MissingInSourceFinder.cs      # FR-015b
 │   ├── SchemaSync.cs                 # data types, document types, templates
 │   ├── MediaSync.cs                  # folders + files via temporary files
 │   ├── DocumentSync.cs               # pages: upsert, publish, sort, read URLs
 │   ├── RedirectSync.cs               # calls the host endpoint
 │   └── Templates/                    # embedded minimal Razor views
 └── Run/
-    ├── Counts.cs                     # SourceCounts/TargetCounts + CountGuard
+    ├── RunModel.cs                   # TargetCounts, CountDrop, RunReport, exit codes
+    ├── Counts.cs                     # TargetCounter + CountGuard
     ├── MigrationRunner.cs            # phases, timings, error collection
     └── Report.cs                     # report.json, report.md, csv files
 profiles/
