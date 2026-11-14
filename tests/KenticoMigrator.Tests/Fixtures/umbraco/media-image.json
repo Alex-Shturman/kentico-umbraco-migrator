@@ -1,0 +1,60 @@
+{
+  "isTrashed": false,
+  "mediaType": {
+    "id": "cc07b313-0843-4aa8-bbda-871c8da728c8",
+    "icon": "icon-picture",
+    "collection": null
+  },
+  "id": "f18ec404-bd9f-4142-87e0-542d360589a6",
+  "flags": [],
+  "values": [
+    {
+      "editorAlias": "Umbraco.ImageCropper",
+      "culture": null,
+      "segment": null,
+      "alias": "umbracoFile",
+      "value": {
+        "focalPoint": null,
+        "crops": [],
+        "src": "/media/rmhmqr5w/kayak-photo.png"
+      }
+    },
+    {
+      "editorAlias": "Umbraco.Label",
+      "culture": null,
+      "segment": null,
+      "alias": "umbracoWidth",
+      "value": "8"
+    },
+    {
+      "editorAlias": "Umbraco.Label",
+      "culture": null,
+      "segment": null,
+      "alias": "umbracoHeight",
+      "value": "8"
+    },
+    {
+      "editorAlias": "Umbraco.Label",
+      "culture": null,
+      "segment": null,
+      "alias": "umbracoBytes",
+      "value": "74"
+    },
+    {
+      "editorAlias": "Umbraco.Label",
+      "culture": null,
+      "segment": null,
+      "alias": "umbracoExtension",
+      "value": "png"
+    }
+  ],
+  "variants": [
+    {
+      "createDate": "2026-11-14T06:58:45.183+00:00",
+      "updateDate": "2026-11-14T06:58:45.183+00:00",
+      "culture": null,
+      "segment": null,
+      "name": "Kayak photo"
+    }
+  ]
+}
