@@ -24,8 +24,8 @@ if [ -n "$bad_names" ]; then
   fail=1
 fi
 
-# 3. U+2014 in tracked content (index, not working tree), except vendored Spec Kit files.
-bad_content=$(git -c core.quotepath=off grep -n -I -F "$em_dash" -- . ':!.specify' ':!.claude/skills/speckit-*' || true)
+# 3. U+2014 in tracked content (the index, via --cached; not the working tree), except vendored Spec Kit files.
+bad_content=$(git -c core.quotepath=off grep --cached -n -I -F "$em_dash" -- . ':!.specify' ':!.claude/skills/speckit-*' || true)
 if [ -n "$bad_content" ]; then
   echo "FAIL: em dash in tracked content:"
   echo "$bad_content" | head -20
