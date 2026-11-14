@@ -194,4 +194,26 @@ public sealed class RichTextRewriterTests
         Assert.Empty(result.Unresolved);
         Assert.Equal(html, result.Html);
     }
+
+    [Theory]
+    [InlineData("""<a href="Brand:Sea Spirit">x</a>""", "Brand:Sea Spirit")]
+    [InlineData("""<a href="C:\x\y.txt">x</a>""", """C:\x\y.txt""")]
+    public void Unknown_schemes_and_drive_paths_are_still_reported_as_unresolved(string html, string href)
+    {
+        var result = Create().Rewrite(html);
+
+        Assert.Equal([href], result.Unresolved);
+    }
+
+    [Theory]
+    [InlineData("sms:+100")]
+    [InlineData("tel:+100")]
+    [InlineData("file:///c/x.txt")]
+    public void Known_non_navigable_schemes_are_ignored(string href)
+    {
+        var result = Create().Rewrite($"""<a href="{href}">x</a>""");
+
+        Assert.Empty(result.Unresolved);
+        Assert.Equal(0, result.External);
+    }
 }

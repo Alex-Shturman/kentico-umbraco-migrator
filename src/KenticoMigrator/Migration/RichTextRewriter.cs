@@ -83,17 +83,16 @@ public sealed partial class RichTextRewriter
                     rewritten++;
                     break;
                 // Counting asymmetry on purpose: off-site links and links into the application are counted because a
-                // reviewer may want to check them (FR-021); mail and anchor links point to nothing of the old site, so
-                // there is nothing to review and they are not counted. Unresolved links are listed, never counted.
+                // reviewer may want to check them (FR-021); mail links are ignored earlier and in-page anchors point to nothing of
+                // the old site, so there is nothing to review and they are not counted. Unresolved links are listed, never counted.
                 case LinkKind.External:
                     external++;
                     break;
                 case LinkKind.Application:
                     application++;
                     break;
-                case LinkKind.Mail:
                 case LinkKind.Anchor:
-                    break; // left as they are and not counted: neither is a page or file of the old site
+                    break; // "#top" points into the same page: left as it is and not counted (mail links never get here)
                 default:
                     if (seenUnresolved.Add(reference))
                     {
@@ -107,11 +106,12 @@ public sealed partial class RichTextRewriter
         return new RewriteResult(rewritten > 0 ? body.InnerHtml : html, rewritten, external, application, unresolved);
     }
 
-    // javascript:, vbscript:, data:, and any other scheme without "//" (mailto: and tel: included) lead nowhere on
-    // the old site: ignored, neither counted nor reported as unresolved.
+    // These schemes lead nowhere on the old site (script, inline data, mail, phone, sms, local file): ignored, neither
+    // counted nor reported as unresolved. Any other "word:" text, such as "Brand:Sea Spirit" or "C:\x", is not a known
+    // scheme and stays visible as an unresolved link.
     private static bool IsNotNavigable(string reference) => NonNavigableScheme().IsMatch(reference);
 
-    [GeneratedRegex(@"^[a-z][a-z0-9+.\-]*:(?!//)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"^(javascript|vbscript|data|mailto|tel|sms|file):", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex NonNavigableScheme();
 
     private static bool IsAlreadyRewritten(IElement element, string reference, bool isImage) =>
