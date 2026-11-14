@@ -1,6 +1,6 @@
 # Parallel Development Tracks
 
-> Source plan: `plan.md`, task list: `tasks.md` (T001 to T063)
+> Source plan: `plan.md`, task list: `tasks.md` (T001 to T063 and the follow-ups T064 to T070)
 > Generated: 2026-11-14
 > Total tracks: 6 (Track 0 to Track 5)
 
@@ -67,7 +67,7 @@ Track 2 edits only those two keys, after Track 3 has committed T025.
 - No em dashes (U+2014) in any file or commit message. `scripts/check-repo.sh` must stay OK.
 - Never write to the Kentico database; never write to the Umbraco database directly (only the
   Management API and the host redirect endpoint).
-- Local services: SQL Server container `oib_sql_container` (restored reference database
+- Local services: SQL Server container `$SQL_CONTAINER` (restored reference database
   `PO_Kentico`; create `Kentico11Sample` and `PO_Umbraco` there), Azurite from
   `docker-compose.yml`. Docker commands need the sandbox disabled.
 - Umbraco 17 APIs: confirm names with Context7 or the official docs before coding; do not rely on
@@ -99,7 +99,7 @@ interface, so that later tracks can compile against them.
 
 ### Agent Prompt
 > You are implementing Track 0 (Foundation) of the Kentico to Umbraco migrator in
-> `/Users/alekseyshturman/RiderProjects/PO_migration`. Read `specs/001-kentico-umbraco-migrator/tracks.md`
+> the repository root. Read `specs/001-kentico-umbraco-migrator/tracks.md`
 > ("Rules for every track" and "File ownership"), then `tasks.md` tasks T001 to T010, plus
 > `.specify/memory/constitution.md`, `plan.md` (Project Structure), `data-model.md` and
 > `contracts/kentico-reader.md`, `contracts/site-profile.md`, `contracts/cli.md`.
@@ -136,7 +136,7 @@ shapes for every property editor the tool writes, routing facts, and the redirec
 
 ### Agent Prompt
 > You are implementing Track 1 (Umbraco host and Management API client) of the Kentico to Umbraco
-> migrator in `/Users/alekseyshturman/RiderProjects/PO_migration`. Track 0 is merged. Read
+> migrator in the repository root. Track 0 is merged. Read
 > `specs/001-kentico-umbraco-migrator/tracks.md` (rules, file ownership), then `tasks.md` tasks
 > T013 to T019 and T049, `research.md` (R4, R6 to R10), `contracts/umbraco-management-api.md`,
 > `contracts/redirect-endpoint.md`, `quickstart.md` step 2.
@@ -144,7 +144,7 @@ shapes for every property editor the tool writes, routing facts, and the redirec
 > client credentials, `IRedirectUrlService`, Management API controller base and authorisation,
 > `Umbraco.StorageProviders.AzureBlob`). Use `/feature-dev:feature-dev` for the host work and
 > `/superpowers:test-driven-development` for T016.
-> The SQL Server is the existing container `oib_sql_container`; create the empty database
+> The SQL Server is the container named by `$SQL_CONTAINER`; create the empty database
 > `PO_Umbraco` there. Put the connection string, admin password and API client secret in
 > `dotnet user-secrets` only, never in files or output. Start Azurite with
 > `docker compose up -d azurite`.
@@ -187,7 +187,7 @@ parsers and `Kentico11SqlReader` for pages, attachments, media libraries and ali
 
 ### Agent Prompt
 > You are implementing Track 2 (source side) of the Kentico to Umbraco migrator in
-> `/Users/alekseyshturman/RiderProjects/PO_migration`. Track 0 is merged. Read
+> the repository root. Track 0 is merged. Read
 > `specs/001-kentico-umbraco-migrator/tracks.md` (rules, file ownership), then `tasks.md` tasks
 > T011, T012, T020 to T024, T039, T040, T044, T050, T053, plus `contracts/kentico-reader.md`,
 > `data-model.md` section 1, `research.md` R5a and R11, `docs/MAPPING.md`.
@@ -196,7 +196,7 @@ parsers and `Kentico11SqlReader` for pages, attachments, media libraries and ali
 > you must NOT copy anything from `Sources/`, `_work/` or the `PO_Kentico` database. You may look
 > at `PO_Kentico` only to learn column types and XML structure (schema), never to copy rows,
 > names or text. Run SQL with the container's own `$MSSQL_SA_PASSWORD` inside `docker exec` on
-> `oib_sql_container` (set `SQL_CONTAINER=oib_sql_container`); never print it. The reader is
+> `$SQL_CONTAINER` (the variable `SQL_CONTAINER` holds its name); never print it. The reader is
 > SELECT only with `ApplicationIntent=ReadOnly`.
 > Use `/superpowers:test-driven-development` for the parsers. Integration tests use
 > `[Trait("Category","Integration")]` and skip when `KENTICO_SAMPLE_CS` is not set; set it only in
@@ -240,7 +240,7 @@ documents, media, old URLs), `UrlIndex`, `RichTextRewriter`, `RedirectPlanner`, 
 
 ### Agent Prompt
 > You are implementing Track 3 (pure core) of the Kentico to Umbraco migrator in
-> `/Users/alekseyshturman/RiderProjects/PO_migration`. Track 0 is merged. Read
+> the repository root. Track 0 is merged. Read
 > `specs/001-kentico-umbraco-migrator/tracks.md` (rules, file ownership), then `tasks.md` tasks
 > T025, T026, T027, T032, T034, T036, T041, T045, T046, T051, T052, plus `data-model.md`,
 > `contracts/site-profile.md`, `contracts/cli.md` (run folder), `research.md` R3, R5, R6, and
@@ -293,7 +293,7 @@ count guard and report, `Program.cs`, end-to-end tests, `check-urls.sh`.
 
 ### Agent Prompt
 > You are implementing Track 4 (sync to Umbraco and the runner) of the Kentico to Umbraco migrator
-> in `/Users/alekseyshturman/RiderProjects/PO_migration`. Tracks 0, 1 and 3 are merged and Track 2
+> in the repository root. Tracks 0, 1 and 3 are merged and Track 2
 > has finished at least T024. Read `specs/001-kentico-umbraco-migrator/tracks.md` (rules, file
 > ownership), then `tasks.md` tasks T028 to T031, T033, T035, T037, T038, T042, T043, T047, T048,
 > T054, T055, plus `contracts/cli.md`, `contracts/umbraco-management-api.md`,
@@ -302,7 +302,7 @@ count guard and report, `Program.cs`, end-to-end tests, `check-urls.sh`.
 > All request bodies must follow the verified fixture shapes, not memory. Unit tests use a fake
 > client; end-to-end tests are `[Trait("Category","Integration")]` and need the host running
 > (`dotnet run --project host/UmbracoSite`, secrets already in user-secrets), Azurite, and the
-> sample restored with `scripts/restore-sample.sh` (`SQL_CONTAINER=oib_sql_container`). For a
+> sample restored with `scripts/restore-sample.sh` (with `SQL_CONTAINER` set to the container name). For a
 > clean end-to-end run, drop and recreate `PO_Umbraco` and let the host reinstall; never write to
 > it with SQL otherwise. No code path may delete or unpublish content (FR-015b).
 > Do the tasks in the listed order. Before T043, T048 and T055 check that the Track 2 tasks they
@@ -337,10 +337,10 @@ RESULTS, fresh-clone check, constitution review, push.
 
 ### Agent Prompt
 > You are implementing Track 5 (reference run, docs and release) of the Kentico to Umbraco migrator
-> in `/Users/alekseyshturman/RiderProjects/PO_migration`. Tracks 0 to 4 are merged and the sample
+> in the repository root. Tracks 0 to 4 are merged and the sample
 > quickstart passes. Read `specs/001-kentico-umbraco-migrator/tracks.md` (rules), then `tasks.md`
 > tasks T056 to T063, `spec.md` success criteria, `docs/DISCOVERY.md`, `docs/MAPPING.md`.
-> The reference database `PO_Kentico` in `oib_sql_container` is client property: the profile may
+> The reference database `PO_Kentico` in `$SQL_CONTAINER` is client property: the profile may
 > contain section-level paths and page type names only; RESULTS.md and README may contain
 > aggregate numbers only (counts, sizes, timings). Never quote content, names of people, listings
 > or user data. Run against a freshly reinstalled `PO_Umbraco`. Put the generated expected-URL
