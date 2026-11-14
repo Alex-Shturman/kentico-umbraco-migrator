@@ -178,7 +178,12 @@ public sealed class RedirectsController : ManagementApiControllerBase
             else
             {
                 var trimmed = decoded.TrimEnd('/');
-                if (trimmed.Length == 0)
+                if (trimmed.Contains("//", StringComparison.Ordinal))
+                {
+                    // Also catches "/%2fx", which decodes to "//x" and would be stored as a protocol-relative path.
+                    reason = "url must not contain //";
+                }
+                else if (trimmed.Length == 0)
                 {
                     // "/" as a source would redirect the whole site.
                     reason = "url must not be the site root";

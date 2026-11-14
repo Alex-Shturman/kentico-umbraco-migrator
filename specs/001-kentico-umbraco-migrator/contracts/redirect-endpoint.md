@@ -34,9 +34,9 @@ Response `200 OK`:
   processed. Reasons: `entry is null`, `url must start with /`, `url must not start with //`,
   `url is longer than 2000 characters`, `url must not contain a query string or fragment`,
   `url must not contain whitespace or control characters (percent-encode them)`,
-  `url must not contain control characters`, `url must not be the site root`,
+  `url must not contain control characters`, `url must not contain //` (after decoding, so `/%2fx` is refused too), `url must not be the site root`,
   `content not found` (unknown key or the empty guid), `url already redirects to another document`
-  (the stored route belongs to a different `contentKey`; no second row is added), or the
+  (the stored route belongs to a different `contentKey`; no second row is added and the existing row is left unchanged), or the
   exception type name when Umbraco fails to save (details are in the host log).
 - Maximum 500 entries per request, more gets `400` ("Send a JSON array with at most 500
   entries."); the tool sends batches of 200.
