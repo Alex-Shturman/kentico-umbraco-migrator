@@ -73,8 +73,16 @@ summary form, the path of the run folder, and the exit code. No field content is
   on the publish call. A page that is still not published is reported as failed. A page that was never published is published
   by a later run. An update whose publish is refused (a non-transient answer such as "parent not published") stays as pending
   changes, is reported `Failed` on that run and `Unchanged` afterwards, because the tool never publishes pending changes (they may
-  be an editor's held-back draft). After fixing the cause, publish the page in the back office, or change the page in the source
-  (or in Umbraco) and re-run with `--overwrite-edited`. A page an editor unpublished stays unpublished.
+  be an editor's held-back draft). After fixing the cause (for example by publishing the parent), publish the page in the back
+  office, or change the page in Umbraco and re-run with `--overwrite-edited` (or change it in the source and re-run): the tool
+  then writes the page again and publishes it (verified end to end by `RerunEndToEndTests`). A page an editor unpublished is
+  published again by the next run when the plan says it is published: Umbraco clears the publish date on unpublish, so the
+  tool cannot tell it from a page that was never published. A page the plan does not publish is never published.
+- **Media.** Folders and files carry no stored fingerprint (research R5-media): an item whose name and folder are the planned ones
+  is `Unchanged`; one an editor renamed or moved is reported as edited and left alone unless `--overwrite-edited` is given, which
+  moves it back, uploads the file again and sets the planned name. A rename in the source is reported the same way. File bytes
+  are not compared and media that left the source are not listed as missing.
+- **Redirects.** A redirect is registered once per old URL and page; a re-run reports it as existing. Redirects are never removed.
 - **Document types.** Editor additions (properties, groups, allowed children, compositions) are kept and numbered after the
   planned ones. The tool owns a planned property's alias, name, data type, group and `mandatory` flag: a flag an editor changes is
   set back to the planned value on the next update of that type, while the pattern and messages of its validation are kept.

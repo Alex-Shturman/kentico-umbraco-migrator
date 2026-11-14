@@ -87,6 +87,73 @@ public sealed class RerunEndToEndTests
         Assert.Equal(before.DocumentsByType, after.DocumentsByType);
     }
 
+    [Fact]
+    public async Task Refused_publish_is_failed_once_then_unchanged_and_overwrite_republishes_after_the_cause_is_fixed()
+    {
+        using var host = EndToEndHost.Connect();
+        Assert.Equal(ExitCodes.Success, (await host.RunAsync(CliArguments.Migrate, ct: Ct)).ExitCode);
+        var tree = await TargetSnapshot.ReadAsync(host.Api, Ct);
+        var parent = tree.Find("Home", "Articles");
+        var page = tree.Find("Home", "Articles", "Paddling basics");
+        var originalTitle = page.Text("title");
+        const string PageOldPath = "/Articles/Paddling-Basics";
+        var publish = new { publishSchedules = new[] { new { culture = (string?)null } } };
+
+        // The parent is a page the plan does not publish (the wrapper marks it unpublished in the source), so the tool leaves it
+        // alone. An editor unpublishes it, and Umbraco then refuses to publish any page below it.
+        static IKenticoReader ParentNotPublished(IKenticoReader inner) => new SourceEditingReader(inner, site => site with
+        {
+            Documents = [.. site.Documents.Select(d => d.AliasPath == "/Articles" ? d with { IsPublished = false } : d)],
+        });
+
+        try
+        {
+            await host.Api.SendAsync(HttpMethod.Put, $"/document/{parent.Key:D}/unpublish", new { cultures = (string[]?)null }, Ct);
+            await SetTitleAsync(host, page.Key, "Edited in the back office");
+
+            var refused = await host.RunAsync(CliArguments.Migrate, overwriteEdited: true, ct: Ct, wrapReader: ParentNotPublished);
+
+            Assert.True(refused.ExitCode == ExitCodes.ItemErrors, refused.Output);
+            Assert.Contains(EndToEndHost.Items(refused), i => i.Kind == ItemKinds.Document && i.OldPath == PageOldPath && i.Outcome == "Failed");
+            var pending = await ReadPageAsync(host, page.Key);
+            Assert.Equal(originalTitle, pending.Text("title")); // written, as pending changes
+            Assert.NotEqual("Published", pending.State);
+
+            // Still refused, but the page now holds what the tool wrote: it is not failed again and not written again.
+            var again = await host.RunAsync(CliArguments.Migrate, ct: Ct, wrapReader: ParentNotPublished);
+            Assert.Equal("Unchanged", Assert.Single(EndToEndHost.Items(again), i => i.Kind == ItemKinds.Document && i.OldPath == PageOldPath).Outcome);
+
+            // Fix the cause. The pending changes are not published by a plain run: they could be an editor's held-back draft.
+            await host.Api.SendAsync(HttpMethod.Put, $"/document/{parent.Key:D}/publish", publish, Ct);
+            var plain = await host.RunAsync(CliArguments.Migrate, ct: Ct, wrapReader: ParentNotPublished);
+            Assert.Equal("Unchanged", Assert.Single(EndToEndHost.Items(plain), i => i.Kind == ItemKinds.Document && i.OldPath == PageOldPath).Outcome);
+            Assert.NotEqual("Published", (await ReadPageAsync(host, page.Key)).State);
+
+            // Change the page in Umbraco and re-run with the overwrite option: it is written and published.
+            await SetTitleAsync(host, page.Key, "Edited again");
+            var republished = await host.RunAsync(CliArguments.Migrate, overwriteEdited: true, ct: Ct, wrapReader: ParentNotPublished);
+
+            Assert.True(republished.ExitCode == ExitCodes.Success, republished.Output);
+            Assert.Equal("EditedOverwritten", Assert.Single(EndToEndHost.Items(republished), i => i.Kind == ItemKinds.Document && i.OldPath == PageOldPath).Outcome);
+            var final = await ReadPageAsync(host, page.Key);
+            Assert.Equal("Published", final.State);
+            Assert.Equal(originalTitle, final.Text("title"));
+        }
+        finally
+        {
+            // Leave the target as the migration wrote it, whatever happened above.
+            await host.Api.SendAsync(HttpMethod.Put, $"/document/{parent.Key:D}/publish", publish, Ct);
+            await host.RunAsync(CliArguments.Migrate, overwriteEdited: true, ct: Ct);
+        }
+    }
+
+    private static async Task<TargetPage> ReadPageAsync(EndToEndHost host, Guid key)
+    {
+        var doc = (await host.Api.GetAsync($"/document/{key:D}", Ct))!;
+        var values = doc["values"]!.AsArray().ToDictionary(v => v!["alias"]!.GetValue<string>(), v => v!["value"]);
+        return new TargetPage(key, null, doc["variants"]![0]!["name"]!.GetValue<string>(), string.Empty, doc["variants"]![0]!["state"]!.GetValue<string>(), values);
+    }
+
     private static async Task SetTitleAsync(EndToEndHost host, Guid key, string title)
     {
         var current = (await host.Api.GetAsync($"/document/{key:D}", Ct))!;
@@ -132,6 +199,19 @@ public sealed class RerunEndToEndTests
                     p => (IReadOnlyList<SourceRow>)[.. p.Value.Select(r => r with { Id = r.Id + 100_000 })]),
             };
         }
+
+        public Task<Stream> OpenAttachmentAsync(Guid attachmentGuid, CancellationToken ct) => inner.OpenAttachmentAsync(attachmentGuid, ct);
+
+        public Task<Stream> OpenMediaFileAsync(SourceMediaFile file, CancellationToken ct) => inner.OpenMediaFileAsync(file, ct);
+
+        public Task<SourceCounts> CountAsync(CancellationToken ct) => inner.CountAsync(ct);
+    }
+
+    /// <summary>Reads the real source and lets a test change the site before the migrator sees it.</summary>
+    private sealed class SourceEditingReader(IKenticoReader inner, Func<SourceSite, SourceSite> edit) : IKenticoReader
+    {
+        public async Task<SourceSite> ReadAsync(IReadOnlyCollection<string> unlinkedRowClasses, CancellationToken ct) =>
+            edit(await inner.ReadAsync(unlinkedRowClasses, ct));
 
         public Task<Stream> OpenAttachmentAsync(Guid attachmentGuid, CancellationToken ct) => inner.OpenAttachmentAsync(attachmentGuid, ct);
 

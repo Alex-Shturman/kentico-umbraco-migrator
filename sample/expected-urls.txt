@@ -5,7 +5,7 @@
 # Verified Umbraco 17 routing (Track 1): routing is case-insensitive, so a path that differs only in
 # case is a 200 without a redirect; document URLs are lower case with a trailing slash, and a redirect
 # Location is relative with that trailing slash (so 301 targets below end in "/"); the host itself
-# redirects .aspx paths. Track 4 confirms every line against a real run (T055).
+# redirects .aspx paths. Every line was confirmed against a real run (T055); the one correction is /Home, see below.
 
 # Kept paths, served directly
 / 200 /
@@ -26,8 +26,10 @@
 /Story.aspx 301 /story/
 /Articles/Paddling-Basics.aspx 301 /articles/paddling-basics/
 
-# Old home path
-/Home 301 /
+# Old home path. The home page is the first root page, so Umbraco serves it at "/" and also at its own URL segment
+# "/home": /Home is a 200 (the redirect to "/" that is registered for it is never reached, redirects only answer
+# a 404). The ".aspx" form is a 404 for routing and is redirected.
+/Home 200 /Home
 /Home.aspx 301 /
 
 # Document alias and URL path override
