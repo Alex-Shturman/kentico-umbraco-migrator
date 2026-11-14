@@ -48,7 +48,7 @@ public static class Report
     }
 
     /// <summary>
-    /// Keeps only the first line up to the start of any payload (<c>{</c>, <c>[</c> or a quote), so an error such as
+    /// Keeps only the first line up to the start of any payload (<c>{</c>, <c>[</c> or a double or single quote), so an error such as
     /// <c>HTTP 400 Validation failed {...}</c> keeps its status and title but not the response body, which can echo
     /// content values (FR-028). Capped at <see cref="MaxErrorLength"/>.
     /// </summary>
@@ -60,7 +60,7 @@ public static class Report
         }
 
         var firstLine = error.AsSpan();
-        var end = firstLine.IndexOfAny("\r\n{[\"");
+        var end = firstLine.IndexOfAny("\r\n{[\"'");
         var kept = (end >= 0 ? firstLine[..end] : firstLine).Trim().ToString();
         return kept.Length > MaxErrorLength ? kept[..MaxErrorLength] : kept;
     }

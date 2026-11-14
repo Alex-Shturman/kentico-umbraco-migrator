@@ -221,4 +221,16 @@ public sealed class ReportTests : IDisposable
         var long500 = File.ReadAllLines(Path.Combine(RunDir, "items.csv")).Single(l => l.Contains("HTTP 500", StringComparison.Ordinal));
         Assert.True(long500.Split(',').Last().Length <= 200);
     }
+
+    [Fact]
+    public void Item_error_is_cut_at_a_single_quote()
+    {
+        var items = new[] { new ItemResult(GuidFor(1), ItemKinds.Document, "brand", "/a", ItemOutcome.Failed, "Invalid value 'abc' for title") };
+
+        Report.Write(SampleReport(items: items), RunDir);
+
+        var csv = File.ReadAllText(Path.Combine(RunDir, "items.csv"));
+        Assert.Contains($",/a,Failed,Invalid value\n", csv);
+        Assert.DoesNotContain("abc", csv);
+    }
 }
