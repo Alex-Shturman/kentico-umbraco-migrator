@@ -77,7 +77,9 @@ A placement moves the page at `path` (a source alias path, for example a contain
 together with everything below it. `newParentPath` is the path of another planned page, the `settingsFolder` path, or `/` for the
 top level (below the home page, whose URL segment Umbraco hides). `urlName`, when given, replaces the URL name of the moved
 page, so a container can be served at a chosen top-level URL (`/search-featured/<alias>` in the reference profile). A
-`reparent` rule still decides the parent of a class of pages; a placement decides the parent of one page.
+`reparent` rule still decides the parent of a class of pages; a placement decides the parent of one page. Only a placement can
+name the settings folder as a parent (a `reparent` rule or `unlinkedRows` entry cannot), a placement path must be a source
+page, not an unlinked row, and the settings folder `path` should be a single segment such as `/Settings`.
 
 `settingsFolder` makes the tool create one folder (`contentFolder`, no template, published, `umbracoNaviHide` and
 `hideFromSitemap` set) at the top level, sorted after the source pages. Its `path` is only the name placements use to address it;

@@ -12,6 +12,8 @@ namespace UmbracoSite.Migration;
 /// render it with, and never reaches its redirect finder. This finder runs before the URL finder and, only when the page
 /// found at the request path has no template and a redirect is registered for that path, answers with that redirect.
 /// Every other request is left to the normal finders, so folders without a redirect still answer 404.
+/// Limitation: it looks routes up without a domain root, like the redirects the migrator registers, so it is meant for a site
+/// without configured domains (the host in this repository).
 /// </summary>
 public sealed class TemplateLessRedirectFinder : IContentFinder
 {
