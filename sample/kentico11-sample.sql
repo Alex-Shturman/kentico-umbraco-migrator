@@ -517,3 +517,21 @@ SET IDENTITY_INSERT CMS_DocumentAlias OFF;
 -- A document whose URL path was set by hand (URL path override).
 UPDATE CMS_Document SET DocumentUrlPath = N'/about-the-shop' WHERE DocumentID = 3;
 GO
+
+-- ============================================================================
+-- Part 6: a linked node
+-- ============================================================================
+
+-- /Catalog/About-Link is a link to /About placed under the catalog. It has its own tree row and document row;
+-- the content stays with the original node.
+SET IDENTITY_INSERT CMS_Tree ON;
+INSERT INTO CMS_Tree (NodeID, NodeAliasPath, NodeName, NodeAlias, NodeClassID, NodeParentID, NodeLevel, NodeSiteID, NodeGUID, NodeOrder, NodeSKUID, NodeLinkedNodeID)
+VALUES (29, N'/Catalog/About-Link', N'About link', N'About-Link', 3, 10, 2, 1, '0de50000-0000-4000-8000-000000000029', 3, NULL, 3);
+SET IDENTITY_INSERT CMS_Tree OFF;
+
+SET IDENTITY_INSERT CMS_Document ON;
+INSERT INTO CMS_Document (DocumentID, DocumentName, DocumentModifiedWhen, DocumentForeignKeyValue, DocumentCreatedWhen, DocumentCulture, DocumentNodeID,
+    DocumentShowInSiteMap, DocumentMenuItemHideInNavigation, DocumentIsArchived, DocumentGUID, DocumentCanBePublished)
+VALUES (29, N'About link', '2018-11-07T10:00:00', 2, '2018-11-07T09:00:00', N'en-US', 29, 0, 1, 0, 'd0c50000-0000-4000-8000-000000000029', 1);
+SET IDENTITY_INSERT CMS_Document OFF;
+GO

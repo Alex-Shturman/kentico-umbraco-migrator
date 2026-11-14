@@ -22,7 +22,7 @@ Documents per page type (the first block of the script output):
 |---|---|
 | `CMS.Root` | 1 |
 | `CMS.Folder` | 3 |
-| `CMS.MenuItem` | 11 |
+| `CMS.MenuItem` | 12 |
 | `CMS.Article` | 3 |
 | `CMS.File` | 2 |
 | `DEMO.Brand` | 6 |
@@ -32,7 +32,7 @@ Other counts:
 
 | Item | Count |
 |---|---|
-| Documents in total | 28 (25 published, 3 not) |
+| Documents in total | 29 (26 published, 3 not), one of them a linked node |
 | Attachments (current versions, `CMS_Attachment`) | 7 |
 | Attachment history rows (`CMS_AttachmentHistory`, must be ignored) | 1 |
 | Media files (`Media_File`) | 4 (3 on disk, 1 missing) |
@@ -49,6 +49,8 @@ Pages worth knowing:
 - `/Catalog` (folder), `/Catalog/Brands` with 6 brands (`Sea Spirit` and `Wave Rider` have a space
   in the name) and one brand row, `Driftwood`, without a page.
 - `/Catalog/Products` with 2 products, each linked to a `COM_SKU` row.
+- `/Catalog/About-Link` is a linked node (`NodeLinkedNodeID` points at `/About`); the reader returns
+  it with `LinkedNodeId` set and no fields, regions or SKU, and the plan builder skips it.
 - `/Articles` with 3 articles.
 
 ## Media
