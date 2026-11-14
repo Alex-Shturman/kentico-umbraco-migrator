@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json.Nodes;
 using KenticoMigrator.Migration;
+using KenticoMigrator.Run;
 
 namespace KenticoMigrator.Umbraco;
 
@@ -10,7 +11,9 @@ public sealed record SyncOptions(bool OverwriteEdited = false, bool Preview = fa
 /// <summary>
 /// Upserts planned documents (FR-014, FR-015): parents before children, one GET per document by its key, POST when it is
 /// missing, PUT when the planned values differ from what the tool wrote last, publish after a write when the plan says so,
-/// and the children of each parent put in the planned order when the order differs. A failed item is a
+/// and the children of each parent put in the planned order when the order differs. With a <see cref="RichTextRewriter"/> the
+/// rich text of every page is rewritten before it is fingerprinted and written (a page's own key is known in advance, so one
+/// pass is enough), and the link statistics are collected in <see cref="Links"/>. A failed item is a
 /// <see cref="ItemOutcome.Failed"/> result; the run goes on. Nothing here deletes or unpublishes anything (FR-015b).
 /// </summary>
 public sealed class DocumentSync
@@ -24,14 +27,21 @@ public sealed class DocumentSync
     private readonly Dictionary<string, TargetDocumentType> _types;
     private readonly Dictionary<string, Guid> _templateKeys;
     private readonly Dictionary<Guid, List<Guid>> _children = [];
+    private readonly RichTextRewriter? _rewriter;
+    private readonly LinkCounter _links = new();
 
-    public DocumentSync(IUmbracoApi api, IReadOnlyList<TargetDocumentType> types, IReadOnlyList<TargetTemplate> templates)
+    /// <param name="rewriter">Rewrites links in rich text; null writes rich text as planned. Not thread-safe, like the sync.</param>
+    public DocumentSync(IUmbracoApi api, IReadOnlyList<TargetDocumentType> types, IReadOnlyList<TargetTemplate> templates, RichTextRewriter? rewriter = null)
     {
         ArgumentNullException.ThrowIfNull(api);
         _api = api;
+        _rewriter = rewriter;
         _types = types.ToDictionary(t => t.Alias, StringComparer.Ordinal);
         _templateKeys = templates.ToDictionary(t => t.Alias, t => t.Key, StringComparer.Ordinal);
     }
+
+    /// <summary>Link totals and unresolved links of the pages of the last <see cref="SyncAsync"/> (all zero without a rewriter).</summary>
+    public LinkStats Links => _links.ToStats();
 
     /// <summary>
     /// Results come in processing order (parents first), one per planned document. Pass <paramref name="results"/> to keep what
@@ -44,6 +54,7 @@ public sealed class DocumentSync
         ArgumentNullException.ThrowIfNull(options);
 
         results ??= new List<ItemResult>(documents.Count);
+        _links.Clear();
         foreach (var doc in ParentsFirst(documents))
         {
             try
@@ -67,7 +78,7 @@ public sealed class DocumentSync
 
     private async Task<ItemOutcome> SyncOneAsync(TargetDocument doc, SyncOptions options, CancellationToken ct)
     {
-        var owned = OwnedValues.FromPlanned(doc);
+        var owned = OwnedValues.FromPlanned(doc, _rewriter is null ? null : markup => RewriteRichText(doc, markup));
         var plannedFingerprint = Fingerprint.Compute(owned);
         var current = await _api.GetAsync(DocumentPath(doc.Key), ct).ConfigureAwait(false);
 
@@ -163,6 +174,14 @@ public sealed class DocumentSync
 
         await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
         return await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
+    }
+
+    // One rewriter call per rich text value; the counts of the call go to the totals, the unresolved hrefs to the page's list.
+    private string RewriteRichText(TargetDocument doc, string markup)
+    {
+        var result = _rewriter!.Rewrite(markup);
+        _links.Add(doc.OldPath, result);
+        return result.Html;
     }
 
     // The parent a page really has (null: a root page), from the ancestors endpoint, whose last entry is the page itself.
@@ -336,4 +355,38 @@ public sealed class DocumentSync
 
     private static ItemResult Result(TargetDocument doc, ItemOutcome outcome, string? error = null) =>
         new(doc.Key, ItemKinds.Document, doc.TypeAlias, doc.OldPath, outcome, error);
+}
+
+/// <summary>Adds up the rewriter results of one sync; the same unresolved href on the same page is listed once.</summary>
+internal sealed class LinkCounter
+{
+    private readonly List<UnresolvedLink> _unresolved = [];
+    private readonly HashSet<UnresolvedLink> _seen = [];
+    private int _rewritten;
+    private int _external;
+    private int _toApplication;
+
+    public void Clear()
+    {
+        _unresolved.Clear();
+        _seen.Clear();
+        _rewritten = _external = _toApplication = 0;
+    }
+
+    public void Add(string oldPath, RewriteResult result)
+    {
+        _rewritten += result.Rewritten;
+        _external += result.External;
+        _toApplication += result.ToApplication;
+        foreach (var href in result.Unresolved)
+        {
+            var link = new UnresolvedLink(oldPath, href);
+            if (_seen.Add(link))
+            {
+                _unresolved.Add(link);
+            }
+        }
+    }
+
+    public LinkStats ToStats() => new(_rewritten, _external, _toApplication, [.. _unresolved]);
 }

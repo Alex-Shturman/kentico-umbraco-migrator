@@ -583,4 +583,76 @@ public sealed class DocumentSyncTests
         Assert.Equal([ItemOutcome.Unchanged, ItemOutcome.EditedSkipped, ItemOutcome.Created], results.Select(r => r.Outcome));
         Assert.DoesNotContain(api.Writes, c => c.Path == "/document/sort");
     }
+
+    // A page with a rich text field that links to a published page and, per call, to more targets.
+    private static (MigrationPlan Plan, TargetDocument Linking, TargetDocument Target) LinkingPair(string html)
+    {
+        var target = Doc(2, null, "Target", publish: true);
+        var linking = Doc(1, null, "Linking", publish: true) with
+        {
+            Values = new Dictionary<string, PlannedValue>
+            {
+                ["bodyText"] = new("RichText", html),
+                [PlanAliases.SourceKey] = new("TextBox", GuidFor(1).ToString()),
+            },
+        };
+        return (Plan with { Documents = [linking, target] }, linking, target);
+    }
+
+    private static DocumentSync LinkingSync(FakeUmbracoApi api, MigrationPlan plan, IReadOnlyDictionary<Guid, string>? mediaUrls = null) =>
+        new(api, Plan.DocumentTypes, Plan.Templates, new RichTextRewriter(UrlIndex.Create(plan, [], SampleProfile()), key => mediaUrls?.GetValueOrDefault(key)));
+
+    [Fact]
+    public async Task Rich_text_is_rewritten_before_write()
+    {
+        var (plan, linking, target) = LinkingPair("<p>See <a href=\"/Target\">the target</a>, <a href=\"https://elsewhere.example/x\">away</a> and <a href=\"/cart\">cart</a>.</p>");
+        var api = new FakeUmbracoApi();
+        var sync = LinkingSync(api, plan);
+
+        await sync.SyncAsync(plan.Documents, Options, Ct);
+
+        var markup = api.Stored("document", linking.Key)!["values"]!.AsArray()
+            .Single(v => v!["alias"]!.GetValue<string>() == "bodyText")!["value"]!["markup"]!.GetValue<string>();
+        Assert.Contains($"href=\"/{{localLink:{target.Key:D}}}\" type=\"document\"", markup);
+        Assert.DoesNotContain("href=\"/Target\"", markup);
+        Assert.Equal(1, sync.Links.Rewritten);
+        Assert.Equal(1, sync.Links.External);
+        Assert.Equal(1, sync.Links.ToApplication);
+        Assert.Empty(sync.Links.Unresolved);
+
+        // The fingerprint was taken over the rewritten markup, so a second run finds the page unchanged.
+        api.Calls.Clear();
+        var again = await LinkingSync(api, plan).SyncAsync(plan.Documents, Options, Ct);
+        Assert.All(again, r => Assert.Equal(ItemOutcome.Unchanged, r.Outcome));
+        Assert.Empty(api.Writes);
+    }
+
+    [Fact]
+    public async Task Unresolved_links_are_reported_with_old_path()
+    {
+        var (plan, linking, _) = LinkingPair("<p><a href=\"/Nowhere.aspx\">a</a> <a href=\"/Nowhere.aspx\">again</a> <a href=\"/Target\">ok</a></p>");
+        var sync = LinkingSync(new FakeUmbracoApi(), plan);
+
+        await sync.SyncAsync(plan.Documents, Options, Ct);
+
+        var unresolved = Assert.Single(sync.Links.Unresolved);
+        Assert.Equal(linking.OldPath, unresolved.OldPath);
+        Assert.Equal("/Nowhere.aspx", unresolved.Href);
+        Assert.Equal(1, sync.Links.Rewritten);
+    }
+
+    [Fact]
+    public async Task Without_a_rewriter_rich_text_is_written_as_planned_and_no_links_are_counted()
+    {
+        var (plan, linking, _) = LinkingPair("<p><a href=\"/Target\">t</a></p>");
+        var api = new FakeUmbracoApi();
+        var sync = NewSync(api);
+
+        await sync.SyncAsync(plan.Documents, Options, Ct);
+
+        var markup = api.Stored("document", linking.Key)!["values"]!.AsArray()
+            .Single(v => v!["alias"]!.GetValue<string>() == "bodyText")!["value"]!["markup"]!.GetValue<string>();
+        Assert.Contains("href=\"/Target\"", markup);
+        Assert.Equal(0, sync.Links.Rewritten);
+    }
 }

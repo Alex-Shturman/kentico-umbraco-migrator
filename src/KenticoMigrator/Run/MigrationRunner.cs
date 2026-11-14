@@ -45,6 +45,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         var total = Stopwatch.StartNew();
         var timings = new List<PhaseTiming>();
         var extraIssues = new List<PlanIssue>();
+        var links = new LinkStats(0, 0, 0, []);
 
         var (site, sourceBefore) = await Timed(timings, Phases.Read, async () =>
         {
@@ -77,7 +78,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
                 items,
                 plan.Skipped,
                 [.. plan.Issues, .. extraIssues],
-                new LinkStats(0, 0, 0, []),
+                links,
                 [],
                 missing,
                 [.. plan.Documents.Where(d => d.ScheduleNote is not null).Select(d => new ScheduleNote(d.Key, d.OldPath, d.ScheduleNote!))],
@@ -150,10 +151,24 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             // A picker must not point at a media item that could not be written: Umbraco would drop it on save and the next
             // run would see an editor change.
             var failedMedia = mediaResults.Where(r => r.Outcome == ItemOutcome.Failed).Select(r => r.Key).ToHashSet();
+            // One rewriter for the whole document phase (it is not thread-safe); image sources come from the media phase.
+            var rewriter = new RichTextRewriter(
+                UrlIndex.Create(plan, site.Aliases, request.Profile),
+                key => mediaSync.Urls.GetValueOrDefault(key));
+            var documentSync = new DocumentSync(api!, plan.DocumentTypes, plan.Templates, rewriter);
             await Timed(timings, Phases.Documents, async () =>
             {
-                await new DocumentSync(api!, plan.DocumentTypes, plan.Templates)
-                    .SyncAsync([.. plan.Documents.Select(d => WithoutMedia(d, failedMedia))], new SyncOptions(request.OverwriteEdited, preview), ct, documents).ConfigureAwait(false);
+                try
+                {
+                    await documentSync
+                        .SyncAsync([.. plan.Documents.Select(d => WithoutMedia(d, failedMedia))], new SyncOptions(request.OverwriteEdited, preview), ct, documents)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    links = documentSync.Links; // what was counted is reported even when the phase stopped early
+                }
+
                 var sorts = documents.Where(r => r.Kind == ItemKinds.Sort).ToList();
                 return (0, Summarize(documents.Where(r => r.Kind == ItemKinds.Document).ToList()) + (sorts.Count > 0 ? $"; sorts: {Summarize(sorts)}" : string.Empty));
             }).ConfigureAwait(false);
@@ -186,7 +201,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
 
         var items = schemaResults.Concat(mediaResults).Concat(documents).ToList();
 
-        WriteSummaryLines(plan, items, missing, drops);
+        WriteSummaryLines(plan, items, missing, drops, links);
 
         var exit = drops.Count > 0 ? ExitCodes.CountDrop
             : stopped || items.Any(r => r.Outcome == ItemOutcome.Failed) ? ExitCodes.ItemErrors
@@ -260,7 +275,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
     }
 
     // Warnings in summary form: counts only, with old paths in the report files.
-    private void WriteSummaryLines(MigrationPlan plan, IReadOnlyList<ItemResult> items, IReadOnlyList<MissingInSource> missing, IReadOnlyList<CountDrop> drops)
+    private void WriteSummaryLines(MigrationPlan plan, IReadOnlyList<ItemResult> items, IReadOnlyList<MissingInSource> missing, IReadOnlyList<CountDrop> drops, LinkStats links)
     {
         if (plan.Skipped.Count > 0)
         {
@@ -271,6 +286,11 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         if (warnings > 0)
         {
             output.WriteLine($"plan warnings: {warnings}");
+        }
+
+        if (links.Rewritten + links.External + links.ToApplication + links.Unresolved.Count > 0)
+        {
+            output.WriteLine($"links: {links.Rewritten} rewritten, {links.External} external, {links.ToApplication} to the application, {links.Unresolved.Count} unresolved (listed in report.md)");
         }
 
         WriteEdited(items, ItemOutcome.EditedSkipped, "edited in Umbraco, not updated");

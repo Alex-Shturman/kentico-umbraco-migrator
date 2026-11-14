@@ -314,6 +314,34 @@ public sealed class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task Link_statistics_and_unresolved_links_reach_the_report()
+    {
+        var site = SampleSite();
+        site = site with
+        {
+            Documents =
+            [
+                .. site.Documents.Where(d => d.NodeId != 11),
+                Doc(11, 10, "CMS.Article", "/Articles/First-trip", name: "First trip", order: 1,
+                    fields: Fields(("ArticleName", "First trip"), ("ArticleText", "<p><a href=\"/About\">a</a> <a href=\"/gone.aspx\">b</a> <a href=\"https://elsewhere.example/\">c</a></p>"))),
+            ],
+        };
+        var api = NewApi();
+
+        var exit = await Runner(new FakeKenticoReader(site), api).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.Success, exit);
+        var links = ReadReport().GetProperty("links");
+        Assert.Equal(1, links.GetProperty("rewritten").GetInt32());
+        Assert.Equal(1, links.GetProperty("external").GetInt32());
+        var unresolved = Assert.Single(links.GetProperty("unresolved").EnumerateArray());
+        Assert.Equal("/Articles/First-trip", unresolved.GetProperty("oldPath").GetString());
+        Assert.Equal("/gone.aspx", unresolved.GetProperty("href").GetString());
+        Assert.Contains("/Articles/First-trip links to /gone.aspx", File.ReadAllText(Path.Combine(_runDir, "report.md")));
+        Assert.Contains("links: 1 rewritten, 1 external", _output.ToString());
+    }
+
+    [Fact]
     public async Task Failure_after_the_writes_still_writes_the_report_and_gives_exit_code_1()
     {
         var api = NewApi();
