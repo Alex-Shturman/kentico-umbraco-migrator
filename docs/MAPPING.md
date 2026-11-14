@@ -1,7 +1,8 @@
 # Proposed mapping: Kentico 11 to Umbraco 17 (LTS)
 
-Status: proposal for review. Items marked **Q** need a decision (see the
-end of this document).
+Status: implemented and verified by the reference run (see [RESULTS.md](RESULTS.md)). Where the
+implementation differs from the first proposal, the text below says so and the decision table at the end lists it. Items
+marked **Q** were decisions.
 
 Based on the inventory in [DISCOVERY.md](DISCOVERY.md).
 
@@ -44,13 +45,12 @@ meta fields with their own `MetaTitle`/`MetaDescription`/`MetaKeywords`.
 | `CMS.MenuItem` (content pages, including `/Listings/Brands`) | `contentPage` | `contentPage` |
 | `CMS.MenuItem` `/Articles` | `articleList` | `article` |
 | `CMS.Article` | `article` | none |
-| `CMS.MenuItem` `/Listings/Search-Featured` (live alias `/search-featured`) | `brandList`, placed under `home` | `brand` |
+| `CMS.MenuItem` `/Listings/Search-Featured` (live alias `/search-featured`) | `brandList`, stays below the `/Listings` folder (see section 3) | `brand` |
 | `PO.Make` | `brand` | none (10 brand rows without a node are created unpublished, decision Q5) |
 | `CMS.MenuItem` `/Products/*` | `productList` | `product` |
 | `PO.Product` | `product` | none |
 | `CMS.Folder`, and `CMS.MenuItem` containers without text (`/Listings`, `/Products`) | `contentFolder` (no template; `folder` is taken by the built-in media type) | any migrated type |
 | `CMS.File` | not a document; becomes a **media item** | |
-| Folder `/settings` (new) | `settingsFolder` | the four lookup types below |
 | `PO.ListingCategory` | `listingCategory` | none |
 | `PO.Horsepower` | `horsepowerRange` | none |
 | `PO.ListingType` | `listingPlan` | none |
@@ -58,7 +58,10 @@ meta fields with their own `MetaTitle`/`MetaDescription`/`MetaKeywords`.
 
 ### 2.3 Lookup types (decision Q1)
 
-Placed under `home/settings` (hidden from navigation, no template).
+Without a template. They stay below their source containers (`/Listings/ListingCategory`, `/Listings/ListingHorsepower`,
+`/Listings/ListingTypes`, `/Listings/ListingRenew`), which become template-less folders: the tool plans only pages that exist
+in the source tree and cannot create a new `settings` folder. The lookup pages therefore answer 404 on the site, like the
+folders (verified by the reference run).
 
 | Umbraco type | Properties (editor) |
 |---|---|
@@ -143,34 +146,39 @@ address and needs no redirect. Each migrated page gets its Kentico
 `NodeAlias` as `umbracoUrlName` (Umbraco lowercases it).
 
 ```
-home                          /            (Kentico /Home, the default alias path)
-├── contentPage               /aboutus, /testimonials, ...
+home (contentPage)            /            (Kentico /Home, the default alias path)
+├── contentPage               /aboutus, /contactus, /testimonials, /error, /notfound
 ├── articleList               /articles
 │   └── article  x6           /articles/<alias>
-├── folder (no template)      /listings
-│   └── contentPage           /listings/getaloan, /listings/brands, ...
-├── brandList                 /search-featured   (live URL of the brand pages)
-│   └── brand    x88 (+10 unpublished, Q5)   /search-featured/<brand>
-├── folder (no template)      /products
-│   └── productList           /products/pontoon-towers
-│       └── product  x3
-├── contentPage               /error, /notfound
-└── settingsFolder (hidden)   /settings
-    ├── listingCategory x4
-    ├── horsepowerRange x6
-    ├── listingPlan     x2
-    └── renewalPlan     x1
+├── contentFolder (no template)  /listings
+│   ├── contentPage           /listings/brands, /listings/getaloan
+│   ├── brandList             /listings/search-featured
+│   │   └── brand    x98 (10 of them unpublished, Q5)   /listings/search-featured/<alias>
+│   └── contentFolder x5      /listings/listingmake (empty), listingcategory (4 items),
+│                             listinghorsepower (6), listingtypes (2), listingrenew (1)
+└── contentFolder (no template)  /products
+    ├── contentPage           /products/home
+    └── productList           /products/pontoon-towers
+        └── product  x3
 ```
 
 Rules:
 
 - Brand pages are served on the live site at `/search-featured/{brand
-  name}`, not at their tree path, so they are placed under a `brandList`
-  node with the URL name `search-featured`. 65 brands keep their exact
-  URL; 33 brand names contain spaces, which cannot be an Umbraco URL
-  segment, so those get a redirect.
+  name}`, which is an application route that no longer exists. They are
+  placed under the `brandList` node, which stays below the `/Listings`
+  folder like in the source tree, so their Umbraco URL is
+  `/listings/search-featured/{alias}`. The old route is redirected for every
+  published brand (88 routes, 30 of them with a space in the name). A profile rule that places a page at the top level would serve the
+  live URLs directly; it is not implemented (follow-up T065).
 - Kentico folders become a `contentFolder` node without a template, so their
-  children keep their paths. A folder URL returns 404, as in Kentico.
+  children keep their paths. A folder URL returns 404, as in Kentico. A fixed
+  alias whose path equals such a folder (the old `/products` alias of
+  `/Products/Home`) cannot work: Umbraco finds the folder, answers 404 and never
+  reaches the redirect finder (follow-up T064).
+- Characters that Umbraco removes from a URL segment (verified: parentheses and a
+  dash between spaces) change the URL of the page; the old path is redirected
+  (reason `url-path`).
 - Order: `NodeOrder` is kept.
 - Node names: `DocumentName`.
 - Publish state: everything published in Kentico is published in Umbraco.
@@ -186,12 +194,15 @@ Rules:
 
 | Source | Umbraco | Count |
 |---|---|---|
-| Media libraries | | 0 (none exist) |
-| `CMS.File` nodes + their attachment | Media item (`Image` or `File`), folder per Kentico section (`Banners`, `images`) | 3 (2 more go to the report, Q6) |
-| Attachments in `PO.Product.Images` | `Image` in `Media/Products/<product>` | 15 |
+| Media libraries | `Kentico import/Libraries/<library>/<subfolders>` | 0 (none exist) |
+| `CMS.File` nodes + their attachment | Media item (`Image` or `File`) in `Kentico import/Attachments/<first path segment>` (`images`, `Resources`) | 3 |
+| Attachments in `PO.Product.Images` | `Image` in `Kentico import/Attachments/Products` | 15 |
 | Unsorted product attachments | `Image` in the same folder, not linked to a property | 3 |
-| `CMS.Article` teaser image | `Image` in `Media/Articles` | 1 |
+| `CMS.Article` teaser image | `Image` in `Kentico import/Attachments/Articles` | 1 |
 | Attachment history | not migrated | 8 |
+
+Media folders created on the reference run: `Kentico import`, `Attachments` and the four section folders (6). The folder is the
+first segment of the owning page's path, so product images share one folder.
 
 - Binary data is read from `CMS_Attachment.AttachmentBinary` (all 25 are in the DB).
 - File name, extension, MIME type, width/height and title come from the
@@ -199,7 +210,10 @@ Rules:
   matched again later.
 - The `.xml` feed and `ads.txt` (2 of the 5 `CMS.File` nodes) are not
   uploaded. They are listed in the report as files for the new host
-  (decision Q6), so 3 `CMS.File` nodes become media.
+  (decision Q6), so 3 `CMS.File` nodes become media. One more attachment of a
+  file page is not used by its file field (a superseded file); it is reported as an
+  unreferenced attachment. In all, 25 attachments become 22 images, 2 host
+  files and 1 unreferenced attachment (verified by the reference run).
 
 ## 5. Rich text rewriting
 
@@ -270,7 +284,7 @@ Outputs:
 
 | # | Decision |
 |---|---|
-| Q1 | Lookup page types are migrated into a `settings` folder (hidden from navigation), see 2.3. This goes beyond the brief's scope (listings) and is stated as such in the README |
+| Q1 | Lookup page types are migrated below their source containers, as template-less pages (a `settings` folder was planned, but the tool does not create folders that are not in the source tree), see 2.3. This goes beyond the brief's scope (listings) and is stated as such in the README |
 | Q2 | Products are migrated as content **plus** SKU data (number, price, retail price, availability) as plain properties. Also beyond the brief's scope (e-commerce), stated in the README |
 | Q3 | Migrate only pages with editorial text; application shell pages are reported as skipped |
 | Q4 | First editable region goes to `bodyText`, the remaining regions to `additionalContent` (`Umbraco.RichText`) |

@@ -216,7 +216,7 @@ redirect with 301; redirects visible in the back office.
 
 ## Phase 9: Polish & Cross-Cutting Concerns
 
-- [ ] T061 [P] Update `docs/MAPPING.md` with anything the implementation verified or changed (research "Verified" items, final media folder names, case-sensitivity result). **Check**: `scripts/check-repo.sh` OK.
+- [x] T061 [P] Update `docs/MAPPING.md` with anything the implementation verified or changed (research "Verified" items, final media folder names, case-sensitivity result). **Check**: `scripts/check-repo.sh` OK.
 - [ ] T062 [P] Review all code against the constitution principles I, II, III (no write SQL in `Kentico/`, no direct Umbraco DB access, no delete or unpublish calls, keys from `Keys`), record findings in the PR description or a short `docs/REVIEW.md`, fix violations. **Check**: `git grep -nE "INSERT|UPDATE|DELETE|MERGE" -- src/KenticoMigrator/Kentico` prints nothing; `git grep -n "HttpMethod.Delete" -- src` prints nothing.
 - [ ] T063 Run the full suite and quickstart once more; push to the GitHub remote. **Check**: `dotnet build` 0 warnings, all unit and integration tests pass, quickstart steps pass, `git push` succeeds.
 
