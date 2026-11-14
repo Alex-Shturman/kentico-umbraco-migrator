@@ -1,0 +1,483 @@
+// Profile for the PontoonsOnly Kentico 11 site (reference run). Section-level paths and class names only, no content (Constitution I).
+{
+  "name": "pontoonsonly",
+  "ownHosts": [
+    "pontoonsonly.com",
+    "www.pontoonsonly.com"
+  ],
+  "excludedPathPrefixes": [
+    "/Account",
+    "/Special-Pages",
+    "/Login",
+    "/Registration",
+    "/ConfirmRegistration",
+    "/ConfirmRegistrationRequired",
+    "/ProductsSearch",
+    "/Listings/Details",
+    "/Listings/Edit",
+    "/Listings/New",
+    "/Listings/NotFound",
+    "/Listings/RemovedListings",
+    "/Listings/Renew",
+    "/Listings/RenewListings",
+    "/Listings/Search",
+    "/Listings/Upgrade",
+    "/Listings/UpgradeListings",
+    "/Listings/UploadPhoto",
+    "/Listings/UserListings"
+  ],
+  "folderPaths": [
+    "/Listings",
+    "/Products",
+    "/Listings/ListingMake",
+    "/Listings/ListingCategory",
+    "/Listings/ListingHorsepower",
+    "/Listings/ListingTypes",
+    "/Listings/ListingRenew"
+  ],
+  "applicationRoutePrefixes": [
+    "/search",
+    "/search-featured",
+    "/listings/search",
+    "/listings/details",
+    "/registration",
+    "/login",
+    "/account",
+    "/special-pages",
+    "/productssearch"
+  ],
+  "notUploadedPaths": [
+    "/Resources/pontoonsonlyfeed",
+    "/Resources/ads"
+  ],
+  "types": [
+    {
+      "kenticoClass": "CMS.MenuItem",
+      "targetAlias": "contentPage",
+      "targetName": "Content page",
+      "hasTemplate": true,
+      "allowedChildren": [
+        "contentPage",
+        "articleList",
+        "contentFolder"
+      ],
+      "fields": [
+        {
+          "source": "doc:DocumentName",
+          "target": "title",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "region:first",
+          "target": "bodyText",
+          "editor": "RichText",
+          "group": "Content"
+        },
+        {
+          "source": "region:rest",
+          "target": "additionalContent",
+          "editor": "RichText",
+          "group": "Content"
+        }
+      ]
+    },
+    {
+      "kenticoClass": "CMS.MenuItem",
+      "pathOverride": "/Articles",
+      "targetAlias": "articleList",
+      "targetName": "Article list",
+      "hasTemplate": true,
+      "allowedChildren": [
+        "article"
+      ],
+      "fields": [
+        {
+          "source": "doc:DocumentName",
+          "target": "title",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "region:first",
+          "target": "bodyText",
+          "editor": "RichText",
+          "group": "Content"
+        }
+      ]
+    },
+    {
+      "kenticoClass": "CMS.MenuItem",
+      "pathOverride": "/Listings/Search-Featured",
+      "targetAlias": "brandList",
+      "targetName": "Brand list",
+      "hasTemplate": true,
+      "allowedChildren": [
+        "brand"
+      ],
+      "fields": [
+        {
+          "source": "doc:DocumentName",
+          "target": "title",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "region:first",
+          "target": "bodyText",
+          "editor": "RichText",
+          "group": "Content"
+        }
+      ]
+    },
+    {
+      "kenticoClass": "CMS.MenuItem",
+      "pathOverride": "/Products/Pontoon-Towers",
+      "targetAlias": "productList",
+      "targetName": "Product list",
+      "hasTemplate": true,
+      "allowedChildren": [
+        "product"
+      ],
+      "fields": [
+        {
+          "source": "doc:DocumentName",
+          "target": "title",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "region:first",
+          "target": "bodyText",
+          "editor": "RichText",
+          "group": "Content"
+        }
+      ]
+    },
+    {
+      "kenticoClass": "CMS.Article",
+      "targetAlias": "article",
+      "targetName": "Article",
+      "hasTemplate": true,
+      "allowedChildren": [],
+      "fields": [
+        {
+          "source": "ArticleName",
+          "target": "title",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "ArticleTeaserText",
+          "target": "teaserText",
+          "editor": "RichText",
+          "group": "Content"
+        },
+        {
+          "source": "file:ArticleTeaserImage",
+          "target": "teaserImage",
+          "editor": "MediaSingle",
+          "group": "Content"
+        },
+        {
+          "source": "ArticleText",
+          "target": "bodyText",
+          "editor": "RichText",
+          "group": "Content"
+        },
+        {
+          "source": "doc:DocumentCreatedWhen",
+          "target": "publishDate",
+          "editor": "DateTime",
+          "group": "Content"
+        }
+      ]
+    },
+    {
+      "kenticoClass": "PO.Make",
+      "targetAlias": "brand",
+      "targetName": "Brand",
+      "hasTemplate": true,
+      "allowedChildren": [],
+      "fields": [
+        {
+          "source": "Name",
+          "target": "title",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "HeaderText",
+          "target": "heading",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "TopText",
+          "target": "introText",
+          "editor": "RichText",
+          "group": "Content"
+        },
+        {
+          "source": "BottomText",
+          "target": "bodyText",
+          "editor": "RichText",
+          "group": "Content"
+        },
+        {
+          "source": "Synonyms",
+          "target": "synonyms",
+          "editor": "Tags",
+          "group": "Content"
+        },
+        {
+          "source": "MakeID",
+          "target": "legacyMakeId",
+          "editor": "Integer",
+          "group": "Content"
+        },
+        {
+          "source": "MetaTitle",
+          "target": "metaTitle",
+          "editor": "TextBox",
+          "group": "SEO"
+        },
+        {
+          "source": "MetaDescription",
+          "target": "metaDescription",
+          "editor": "TextArea",
+          "group": "SEO"
+        },
+        {
+          "source": "MetaKeywords",
+          "target": "metaKeywords",
+          "editor": "TextBox",
+          "group": "SEO"
+        }
+      ]
+    },
+    {
+      "kenticoClass": "PO.Product",
+      "targetAlias": "product",
+      "targetName": "Product",
+      "hasTemplate": true,
+      "allowedChildren": [],
+      "fields": [
+        {
+          "source": "ProductName",
+          "target": "title",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "Featured",
+          "target": "featured",
+          "editor": "TrueFalse",
+          "group": "Content"
+        },
+        {
+          "source": "attachments:Images",
+          "target": "images",
+          "editor": "MediaMultiple",
+          "group": "Content"
+        },
+        {
+          "source": "ShippingInformation",
+          "target": "shippingInformation",
+          "editor": "RichText",
+          "group": "Content"
+        },
+        {
+          "source": "ShippingImage",
+          "target": "shippingImage",
+          "editor": "DropDown",
+          "group": "Content"
+        },
+        {
+          "source": "sku:SKUNumber",
+          "target": "sku",
+          "editor": "TextBox",
+          "group": "Commerce"
+        },
+        {
+          "source": "sku:SKUPrice",
+          "target": "price",
+          "editor": "Decimal",
+          "group": "Commerce"
+        },
+        {
+          "source": "sku:SKURetailPrice",
+          "target": "retailPrice",
+          "editor": "Decimal",
+          "group": "Commerce"
+        },
+        {
+          "source": "sku:SKUAvailableItems",
+          "target": "availableItems",
+          "editor": "Integer",
+          "group": "Commerce"
+        },
+        {
+          "source": "sku:SKUEnabled",
+          "target": "available",
+          "editor": "TrueFalse",
+          "group": "Commerce"
+        }
+      ]
+    },
+    {
+      "kenticoClass": "PO.ListingCategory",
+      "targetAlias": "listingCategory",
+      "targetName": "Listing category",
+      "hasTemplate": false,
+      "allowedChildren": [],
+      "fields": [
+        {
+          "source": "Name",
+          "target": "title",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "ListingCategoryID",
+          "target": "legacyId",
+          "editor": "Integer",
+          "group": "Content"
+        }
+      ]
+    },
+    {
+      "kenticoClass": "PO.Horsepower",
+      "targetAlias": "horsepowerRange",
+      "targetName": "Horsepower range",
+      "hasTemplate": false,
+      "allowedChildren": [],
+      "fields": [
+        {
+          "source": "Name",
+          "target": "title",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "Min",
+          "target": "min",
+          "editor": "Integer",
+          "group": "Content"
+        },
+        {
+          "source": "Max",
+          "target": "max",
+          "editor": "Integer",
+          "group": "Content"
+        },
+        {
+          "source": "HorsepowerID",
+          "target": "legacyId",
+          "editor": "Integer",
+          "group": "Content"
+        }
+      ]
+    },
+    {
+      "kenticoClass": "PO.ListingType",
+      "targetAlias": "listingPlan",
+      "targetName": "Listing plan",
+      "hasTemplate": false,
+      "allowedChildren": [],
+      "fields": [
+        {
+          "source": "Name",
+          "target": "title",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "Description",
+          "target": "description",
+          "editor": "TextArea",
+          "group": "Content"
+        },
+        {
+          "source": "Price",
+          "target": "price",
+          "editor": "Decimal",
+          "group": "Content"
+        },
+        {
+          "source": "DaysVisible",
+          "target": "daysVisible",
+          "editor": "Integer",
+          "group": "Content"
+        },
+        {
+          "source": "MaxPhotoNumber",
+          "target": "maxPhotos",
+          "editor": "Integer",
+          "group": "Content"
+        },
+        {
+          "source": "Featured",
+          "target": "featured",
+          "editor": "TrueFalse",
+          "group": "Content"
+        },
+        {
+          "source": "ListingTypeID",
+          "target": "legacyId",
+          "editor": "Integer",
+          "group": "Content"
+        }
+      ]
+    },
+    {
+      "kenticoClass": "PO.ListingRenew",
+      "targetAlias": "renewalPlan",
+      "targetName": "Renewal plan",
+      "hasTemplate": false,
+      "allowedChildren": [],
+      "fields": [
+        {
+          "source": "Name",
+          "target": "title",
+          "editor": "TextBox",
+          "group": "Content"
+        },
+        {
+          "source": "Price",
+          "target": "price",
+          "editor": "Decimal",
+          "group": "Content"
+        },
+        {
+          "source": "Days",
+          "target": "days",
+          "editor": "Integer",
+          "group": "Content"
+        },
+        {
+          "source": "ListingRenewID",
+          "target": "legacyId",
+          "editor": "Integer",
+          "group": "Content"
+        }
+      ]
+    }
+  ],
+  "reparent": [
+    {
+      "kenticoClass": "PO.Make",
+      "newParentPath": "/Listings/Search-Featured",
+      "urlNameFrom": "NodeAlias",
+      "oldRoutePattern": "/search-featured/{Name}"
+    }
+  ],
+  "unlinkedRows": [
+    {
+      "kenticoClass": "PO.Make",
+      "nameField": "Name",
+      "parentPath": "/Listings/Search-Featured",
+      "publish": false
+    }
+  ]
+}
