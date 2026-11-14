@@ -119,7 +119,21 @@ with 404 before the redirect finder runs. Follow-up task T064 in `tasks.md`.
 
 ## Fresh clone
 
-Measured in T060 (see below once recorded).
+T060, 2026-11-14: the repository was cloned into a temporary folder and README steps 1 to 7 (the quickstart steps 1 to 6)
+were followed with a stopwatch on a machine that already had the .NET SDK, Docker with a SQL Server container, the NuGet
+packages and the development certificate. Elapsed time from the clone to the end of the second `migrate` run: **52 seconds** (the
+services and the sample restore 9 s, host start including the first build and the Umbraco install 29 s in total, `plan` 41 s,
+`migrate` 49 s, URL check 50 s, second run 52 s). The repository itself finished the 25 URLs of the sample with 25 OK and the
+second run with 0 created and 0 updated.
+
+Two honest limits of this measurement:
+
+- The user secrets are keyed by the `UserSecretsId` of each project, so the secrets set earlier on this machine were visible to
+  the clone. A real newcomer must set them (the README now lists the host secrets as one block); typing them is manual work that
+  this measurement does not include. The migrator's `Kentico:ConnectionString` for the sample was set again during the run.
+- Package downloads were not repeated (the NuGet cache was warm), as SC-005 allows.
+
+Doc gap found and fixed: the README named the host secrets only by reference to `host/README.md`; it now carries the commands.
 
 ## Notes and deviations
 

@@ -62,9 +62,22 @@ the host setup is in [host/README.md](host/README.md) and the sample in [sample/
    Create the empty target database: `docker exec $SQL_CONTAINER bash -c '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -Q "CREATE DATABASE PO_Umbraco"'`.
 2. **Sample source.** `scripts/restore-sample.sh` creates `Kentico11Sample` and prints the counts that
    [sample/README.md](sample/README.md) lists.
-3. **Target site.** Set the host secrets (connection string, admin password, API client secret, imaging key; see
-   [host/README.md](host/README.md)), trust the development certificate (`dotnet dev-certs https --trust`) and run
-   `dotnet run --project host/UmbracoSite`. The back office is at `https://localhost:44317/umbraco`.
+3. **Target site.** Set the host secrets once (nothing secret is stored in files), trust the development certificate
+   (`dotnet dev-certs https --trust`) and start the host. The first start installs Umbraco into the empty `PO_Umbraco` database
+   (about half a minute) and creates the API user. The back office is at `https://localhost:44317/umbraco`.
+
+   ```bash
+   cd host/UmbracoSite
+   dotnet user-secrets set "ConnectionStrings:umbracoDbDSN" "Server=localhost,1433;Database=PO_Umbraco;User Id=sa;Password=<sa password>;TrustServerCertificate=True;Encrypt=True"
+   dotnet user-secrets set "Umbraco:CMS:Unattended:InstallUnattended" "true"
+   dotnet user-secrets set "Umbraco:CMS:Unattended:UnattendedUserName" "Migrator Admin"
+   dotnet user-secrets set "Umbraco:CMS:Unattended:UnattendedUserEmail" "admin@example.test"
+   dotnet user-secrets set "Umbraco:CMS:Unattended:UnattendedUserPassword" "<admin password>"
+   dotnet user-secrets set "Migration:ApiClient:Secret" "<client secret>"
+   dotnet user-secrets set "Umbraco:CMS:Imaging:HMACSecretKey" "$(openssl rand -base64 64)"
+   cd ../..
+   dotnet run --project host/UmbracoSite
+   ```
 4. **Preview.** Set the migrator secrets (`Kentico:ConnectionString` for `Kentico11Sample`, `Umbraco:ClientSecret`, the same value as
    the host's client secret) with `dotnet user-secrets --project src/KenticoMigrator set ...`, then
    `dotnet run --project src/KenticoMigrator -- plan --profile profiles/sample.json`. Nothing is written to Umbraco.
