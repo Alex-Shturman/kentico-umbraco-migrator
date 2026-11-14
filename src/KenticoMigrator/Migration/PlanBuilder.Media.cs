@@ -27,7 +27,7 @@ public sealed partial class PlanBuilder
         var owners = candidates.Where(n => n.Document is not null).Select(n => n.Document!)
             .Concat(_fileNodes)
             .ToDictionary(d => d.NodeId);
-        var allDocuments = _site.Documents.GroupBy(d => d.NodeId).ToDictionary(g => g.Key, g => g.First());
+        var allDocuments = SourceById();
 
         var folders = new Dictionary<Guid, TargetMedia>();
         var items = new List<TargetMedia>();

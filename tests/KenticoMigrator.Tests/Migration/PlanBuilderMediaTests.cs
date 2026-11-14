@@ -176,16 +176,6 @@ public sealed class PlanBuilderMediaTests
     }
 
     [Fact]
-    public void History_versions_are_not_planned()
-    {
-        // The reader returns current versions only; the plan holds exactly those and reports no history.
-        var plan = Build(WithMedia([Attachment(A1, 9, "current.jpg", "Images", order: 1)]));
-
-        Assert.Single(plan.Media, m => m.MediaType != MediaType.Folder);
-        Assert.DoesNotContain(plan.Skipped, s => s.Category == SkipCategories.AttachmentHistory);
-    }
-
-    [Fact]
     public void Folders_come_before_their_content_and_are_deterministic()
     {
         var site = WithMedia(

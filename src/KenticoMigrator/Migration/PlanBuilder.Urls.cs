@@ -9,12 +9,15 @@ public sealed partial class PlanBuilder
     /// <summary>Fixed (non-wildcard) aliases per page, in a stable order.</summary>
     private ILookup<int, string> _fixedAliases = Array.Empty<string>().ToLookup(_ => 0);
 
-    private static readonly Regex Placeholder = new(@"\{(\w+)\}", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex Placeholder = PlaceholderRegex();
+
+    [GeneratedRegex(@"\{(\w+)\}", RegexOptions.CultureInvariant)]
+    private static partial Regex PlaceholderRegex();
 
     /// <summary>Reports wildcard aliases (application routes) and indexes the fixed ones.</summary>
     private void PrepareAliases()
     {
-        var sourceById = _site.Documents.GroupBy(d => d.NodeId).ToDictionary(g => g.Key, g => g.First());
+        var sourceById = SourceById();
         var ordered = _site.Aliases.OrderBy(a => a.NodeId).ThenBy(a => a.UrlPath, StringComparer.Ordinal).ToList();
 
         foreach (var alias in ordered.Where(a => a.IsWildcard))

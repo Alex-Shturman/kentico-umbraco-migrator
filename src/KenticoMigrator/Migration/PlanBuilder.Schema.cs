@@ -135,12 +135,18 @@ public sealed partial class PlanBuilder
 
         var mapped = new List<TargetDocumentType>();
         var seenAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var knownChildren = _profile.Types.Select(t => t.TargetAlias).Append(PlanAliases.Folder).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var mapping in _profile.Types)
         {
             if (!seenAliases.Add(mapping.TargetAlias))
             {
                 Error("profile", $"Target alias '{mapping.TargetAlias}' is used by more than one type mapping.");
                 continue;
+            }
+
+            foreach (var child in mapping.AllowedChildren.Where(c => !knownChildren.Contains(c)))
+            {
+                Error("profile", $"Type '{mapping.TargetAlias}' allows child '{child}', which is not a mapped type.");
             }
 
             var properties = mapping.Fields
@@ -192,7 +198,7 @@ public sealed partial class PlanBuilder
     /// </summary>
     private static List<TargetDocumentType> ApplyHierarchy(IReadOnlyList<TargetDocumentType> types, IReadOnlyList<TargetDocument> documents)
     {
-        var typeByKey = documents.GroupBy(d => d.Key).ToDictionary(g => g.Key, g => g.First().TypeAlias);
+        var typeByKey = documents.GroupBy(d => d.Key).ToDictionary(g => g.Key, g => g.OrderBy(d => d.OldPath, StringComparer.Ordinal).First().TypeAlias);
         var childAliases = documents
             .Where(d => d.ParentKey is not null)
             .GroupBy(d => typeByKey[d.ParentKey!.Value])

@@ -36,9 +36,6 @@ public sealed partial class PlanBuilder
         IReadOnlyList<EditableRegion> Regions,
         IReadOnlyDictionary<string, object?>? Sku);
 
-    /// <summary>All planned nodes in output order; later parts (media, URLs) read it.</summary>
-    private List<Node> _nodes = [];
-
     private List<TargetDocument> BuildDocuments()
     {
         CheckProfileClasses();
@@ -46,7 +43,8 @@ public sealed partial class PlanBuilder
         var candidates = new List<Node>();
         var ordered = _site.Documents
             .OrderBy(d => d.AliasPath, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(d => d.NodeId);
+            .ThenBy(d => d.NodeId)
+            .ThenBy(d => d.NodeGuid);
         var seenNodeIds = new HashSet<int>();
         var seenGuids = new HashSet<Guid>();
         foreach (var doc in ordered)
@@ -74,7 +72,7 @@ public sealed partial class PlanBuilder
             byAliasPath.TryAdd(node.OldPath, node);
         }
 
-        var sourceById = _site.Documents.GroupBy(d => d.NodeId).ToDictionary(g => g.Key, g => g.First());
+        var sourceById = SourceById();
         byAliasPath.TryGetValue(HomeAliasPath, out var home);
 
         foreach (var node in candidates)
@@ -83,6 +81,7 @@ public sealed partial class PlanBuilder
             node.UrlName = ResolveUrlName(node);
         }
 
+        BreakParentCycles(candidates, home);
         AddUnlinkedRows(candidates, byAliasPath);
         CheckSiblingNames(candidates);
         AssignDepths(candidates);
@@ -93,9 +92,36 @@ public sealed partial class PlanBuilder
             .ThenBy(n => n.OldPath, StringComparer.OrdinalIgnoreCase)
             .ThenBy(n => n.Key)
             .ToList();
-        _nodes = sorted;
 
         return [.. sorted.Select(ToDocument)];
+    }
+
+    private Dictionary<int, SourceDocument>? _sourceById;
+
+    /// <summary>Source pages by node id; if an id repeats, the page that sorts first by path then GUID is the one used.</summary>
+    private Dictionary<int, SourceDocument> SourceById() =>
+        _sourceById ??= _site.Documents
+            .OrderBy(d => d.AliasPath, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(d => d.NodeGuid)
+            .GroupBy(d => d.NodeId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+    /// <summary>A re-parent chain that leads back to the page itself is a plan error; the page goes to the top level instead.</summary>
+    private void BreakParentCycles(List<Node> nodes, Node? home)
+    {
+        foreach (var node in nodes)
+        {
+            var steps = 0;
+            for (var p = node.Parent; p is not null && steps <= nodes.Count; p = p.Parent, steps++)
+            {
+                if (p == node)
+                {
+                    Error(node.OldPath, "Re-parenting creates a cycle; the page is placed at the top level.");
+                    node.Parent = home is not null && home != node ? home : null;
+                    break;
+                }
+            }
+        }
     }
 
     private void CheckProfileClasses()
@@ -192,10 +218,17 @@ public sealed partial class PlanBuilder
         {
             if (byAliasPath.TryGetValue(rule.NewParentPath, out var newParent) && newParent != node)
             {
-                return newParent;
-            }
+                if (!string.Equals(newParent.Document!.ClassName, doc.ClassName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return newParent;
+                }
 
-            Error(doc.AliasPath, $"Re-parent path '{rule.NewParentPath}' does not resolve to a planned page.");
+                Error(doc.AliasPath, $"Re-parent path '{rule.NewParentPath}' is a page of the same Kentico class '{doc.ClassName}'.");
+            }
+            else
+            {
+                Error(doc.AliasPath, $"Re-parent path '{rule.NewParentPath}' does not resolve to a planned page.");
+            }
         }
 
         if (doc.ParentNodeId is { } parentId && sourceById.TryGetValue(parentId, out var directParent))
@@ -227,6 +260,12 @@ public sealed partial class PlanBuilder
             {
                 Warning(doc.AliasPath, $"Parent '{directParent.AliasPath}' is not migrated; the page is attached to {(home is null ? "the top level" : "the home page")}.");
             }
+        }
+
+        else if (doc.ParentNodeId is not null && doc.AliasPath.Trim('/').Contains('/', StringComparison.Ordinal))
+        {
+            // A nested page whose parent row is absent; a top-level page below the unread Kentico root is normal.
+            Warning(doc.AliasPath, "The parent node of this page is not in the source; the page is attached to the home page.");
         }
 
         return home is not null && home != node ? home : null;
@@ -351,126 +390,6 @@ public sealed partial class PlanBuilder
         node.OldPath,
         OldUrlsFor(node),
         node.ScheduleNote);
-
-    private Dictionary<string, PlannedValue> BuildValues(Node node)
-    {
-        var values = new Dictionary<string, PlannedValue>(StringComparer.Ordinal);
-        var doc = node.Document;
-
-        if (node.TypeAlias != PlanAliases.Folder)
-        {
-            values[PlanAliases.MetaTitle] = new("TextBox", doc?.PageTitle);
-            values[PlanAliases.MetaDescription] = new("TextArea", doc?.PageDescription);
-            values[PlanAliases.MetaKeywords] = new("TextBox", doc?.PageKeywords);
-            values[PlanAliases.NaviHide] = new("TrueFalse", doc?.HideInNavigation ?? false);
-            values[PlanAliases.HideFromSitemap] = new("TrueFalse", !(doc?.ShowInSitemap ?? true));
-        }
-
-        values[PlanAliases.SourceKey] = new("TextBox", node.Key.ToString());
-
-        foreach (var field in node.Mapping?.Fields ?? [])
-        {
-            values[field.TargetAlias] = new(field.Editor, ResolveField(node, field));
-        }
-
-        return values;
-    }
-
-    private object? ResolveField(Node node, FieldMapping field)
-    {
-        var raw = ReadSource(node, field.Source);
-        return field.Editor == "Tags" && raw is string text
-            ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList()
-            : raw;
-    }
-
-    private object? ReadSource(Node node, string source)
-    {
-        var values = node.Source;
-        if (source.Equals("region:first", StringComparison.Ordinal))
-        {
-            return values.Regions.Count > 0 ? values.Regions[0].Html : null;
-        }
-
-        if (source.Equals("region:rest", StringComparison.Ordinal))
-        {
-            return values.Regions.Count > 1 ? string.Join("\n\n", values.Regions.Skip(1).Select(r => r.Html)) : null;
-        }
-
-        if (source.StartsWith("sku:", StringComparison.Ordinal))
-        {
-            return values.Sku is null ? null : Lookup(values.Sku, source[4..]);
-        }
-
-        if (source.StartsWith("file:", StringComparison.Ordinal))
-        {
-            var keys = MediaOf(node, source[5..]);
-            return keys.Length > 0 ? keys[0] : null;
-        }
-
-        if (source.StartsWith("attachments:", StringComparison.Ordinal))
-        {
-            return MediaOf(node, source[12..]);
-        }
-
-        if (source.StartsWith("doc:", StringComparison.Ordinal))
-        {
-            return ReadDocumentMetadata(node, source[4..]);
-        }
-
-        return Lookup(values.Fields, source);
-    }
-
-    private object? ReadDocumentMetadata(Node node, string column)
-    {
-        var doc = node.Source.Document;
-        switch (column)
-        {
-            case "DocumentName":
-                return node.Source.Name;
-            case "NodeAlias":
-                return doc?.NodeAlias;
-            case "NodeAliasPath":
-                return doc?.AliasPath;
-            case "DocumentPageTitle":
-                return doc?.PageTitle;
-            case "DocumentPageDescription":
-                return doc?.PageDescription;
-            case "DocumentPageKeyWords":
-                return doc?.PageKeywords;
-            case "DocumentCreatedWhen":
-                return doc?.Created;
-            case "DocumentModifiedWhen":
-                return doc?.Modified;
-            default:
-                if (_unknownMetadata.Add(column))
-                {
-                    Error("profile", $"Unknown document metadata 'doc:{column}' in a field mapping.");
-                }
-
-                return null;
-        }
-    }
-
-    private readonly HashSet<string> _unknownMetadata = new(StringComparer.Ordinal);
-
-    private static object? Lookup(IReadOnlyDictionary<string, object?> values, string key)
-    {
-        if (values.TryGetValue(key, out var exact))
-        {
-            return exact;
-        }
-
-        foreach (var pair in values)
-        {
-            if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase))
-            {
-                return pair.Value;
-            }
-        }
-
-        return null;
-    }
 
     private static bool PathEquals(string path, string other) =>
         string.Equals(path.TrimEnd('/'), other.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
