@@ -23,10 +23,15 @@ public static class Report
 
     private static readonly UTF8Encoding Utf8NoBom = new(false);
 
+    /// <summary>Longest item error kept in a report.</summary>
+    internal const int MaxErrorLength = 200;
+
     public static void Write(RunReport report, string runDir)
     {
         ArgumentNullException.ThrowIfNull(report);
         ArgumentException.ThrowIfNullOrWhiteSpace(runDir);
+
+        report = report with { Items = [.. report.Items.Select(i => i with { Error = SanitizeError(i.Error) })] };
 
         Directory.CreateDirectory(runDir);
         WriteFile(runDir, "report.json", JsonSerializer.Serialize(report, JsonOptions) + "\n");
@@ -40,6 +45,24 @@ public static class Report
         WriteFile(runDir, "items.csv", Csv(
             ["kind", "type", "key", "old_path", "outcome", "error"],
             report.Items.Select(i => new[] { i.Kind, i.TypeAlias, i.Key.ToString(), i.OldPath, i.Outcome.ToString(), i.Error ?? string.Empty })));
+    }
+
+    /// <summary>
+    /// Keeps only the first line up to the start of any payload (<c>{</c>, <c>[</c> or a quote), so an error such as
+    /// <c>HTTP 400 Validation failed {...}</c> keeps its status and title but not the response body, which can echo
+    /// content values (FR-028). Capped at <see cref="MaxErrorLength"/>.
+    /// </summary>
+    internal static string? SanitizeError(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error))
+        {
+            return null;
+        }
+
+        var firstLine = error.AsSpan();
+        var end = firstLine.IndexOfAny("\r\n{[\"");
+        var kept = (end >= 0 ? firstLine[..end] : firstLine).Trim().ToString();
+        return kept.Length > MaxErrorLength ? kept[..MaxErrorLength] : kept;
     }
 
     private static void WriteFile(string dir, string name, string content) =>

@@ -158,7 +158,8 @@ public sealed class ReportTests : IDisposable
     [Fact]
     public void Report_contains_no_field_values()
     {
-        // A field value, a region and an unlinked row name carry the marker; none of it may reach a report.
+        // The marker sits in field values, regions, a page title and the names of two brands. Brand names reach the
+        // old brand routes (URLs, by design) and the duplicate-claim warning (which must not repeat them).
         var site = SampleSite() with
         {
             UnlinkedRows = new Dictionary<string, IReadOnlyList<SourceRow>>
@@ -173,17 +174,51 @@ public sealed class ReportTests : IDisposable
                 .. site.Documents,
                 Doc(30, null, "CMS.MenuItem", "/Dup", alias: "dup", regions: [Region("r", $"<p>{Marker}</p>")], fields: Fields(("x", Marker))),
                 Doc(31, null, "CMS.MenuItem", "/Dup2", alias: "DUP", regions: [Region("r", Marker)], pageTitle: Marker),
+                Doc(32, 6, "DEMO.Brand", "/Catalog/Brands/Twin-A", alias: "Twin-A", fields: Fields(("Name", Marker))),
+                Doc(33, 6, "DEMO.Brand", "/Catalog/Brands/Twin-B", alias: "Twin-B", fields: Fields(("Name", Marker))),
             ],
         };
         var plan = PlanBuilder.Build(site, SampleProfile());
         Assert.NotEmpty(plan.Issues);
 
-        var items = plan.Documents.Select(d => new ItemResult(d.Key, ItemKinds.Document, d.TypeAlias, d.OldPath, ItemOutcome.Created, null)).ToList();
-        Report.Write(SampleReport(plan.Skipped, plan.Issues, items), RunDir);
+        var actualUrls = plan.Documents.ToDictionary(d => d.Key, d => "/" + d.UrlName.ToLowerInvariant() + "/");
+        var redirectPlan = RedirectPlanner.Plan(plan.Documents, actualUrls);
+        Assert.NotEmpty(redirectPlan.Warnings);
+        Assert.Contains(redirectPlan.Redirects, r => r.OldUrl.Contains(Marker, StringComparison.Ordinal));
 
+        var items = plan.Documents.Select(d => new ItemResult(d.Key, ItemKinds.Document, d.TypeAlias, d.OldPath, ItemOutcome.Created, null)).ToList();
+        var report = SampleReport(plan.Skipped, [.. plan.Issues, .. redirectPlan.Warnings], items) with { PlannedRedirects = redirectPlan.Redirects };
+        Report.Write(report, RunDir);
+
+        // Old URLs are the one place content-derived text is allowed: redirects.csv, documented in contracts/cli.md.
+        foreach (var file in Directory.GetFiles(RunDir).Where(f => Path.GetFileName(f) != "redirects.csv"))
+        {
+            Assert.DoesNotContain(Marker, File.ReadAllText(file));
+        }
+
+        Assert.Contains(Marker, File.ReadAllText(Path.Combine(RunDir, "redirects.csv")));
+    }
+
+    [Fact]
+    public void Item_errors_keep_status_and_title_only_and_are_capped()
+    {
+        var items = new[]
+        {
+            new ItemResult(GuidFor(1), ItemKinds.Document, "brand", "/a", ItemOutcome.Failed,
+                $"HTTP 400 Validation failed {{\"errors\":{{\"title\":[\"{Marker}\"]}}}}\nsecond line {Marker}"),
+            new ItemResult(GuidFor(2), ItemKinds.Document, "brand", "/b", ItemOutcome.Failed, "HTTP 500 " + new string('x', 500)),
+        };
+
+        Report.Write(SampleReport(items: items), RunDir);
+
+        var csv = File.ReadAllText(Path.Combine(RunDir, "items.csv"));
+        Assert.Contains("HTTP 400 Validation failed", csv);
         foreach (var file in Directory.GetFiles(RunDir))
         {
             Assert.DoesNotContain(Marker, File.ReadAllText(file));
         }
+
+        var long500 = File.ReadAllLines(Path.Combine(RunDir, "items.csv")).Single(l => l.Contains("HTTP 500", StringComparison.Ordinal));
+        Assert.True(long500.Split(',').Last().Length <= 200);
     }
 }
