@@ -5,3 +5,11 @@ media and old URLs in Umbraco 17 through the Management API. Runs are repeatable
 before/after counts.
 
 Work in progress. See the [specification](specs/001-kentico-umbraco-migrator/spec.md).
+
+## Development
+
+```bash
+dotnet build
+dotnet test --filter "Category!=Integration"
+scripts/check-repo.sh
+```
