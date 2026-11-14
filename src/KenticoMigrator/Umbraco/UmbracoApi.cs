@@ -1,4 +1,3 @@
-using System.Net;
 using System.Text.Json.Nodes;
 
 namespace KenticoMigrator.Umbraco;
@@ -12,7 +11,10 @@ public interface IUmbracoApi
     /// <summary>GET; null when the item does not exist (404, empty body or JSON null).</summary>
     Task<JsonNode?> GetAsync(string path, CancellationToken ct);
 
-    /// <summary>POST, PUT or DELETE with an optional JSON body. Throws <see cref="UmbracoApiException"/> on a non-success answer.</summary>
+    /// <summary>
+    /// POST or PUT with an optional JSON body. Throws <see cref="UmbracoApiException"/> on a non-success answer. The tool has no
+    /// delete path (FR-015b): the real implementation refuses DELETE with <see cref="InvalidOperationException"/>.
+    /// </summary>
     Task<ApiResponse> SendAsync(HttpMethod method, string path, object? body, CancellationToken ct);
 }
 
@@ -22,27 +24,7 @@ public sealed class UmbracoApi(ManagementApiClient client) : IUmbracoApi
     public Task<JsonNode?> GetAsync(string path, CancellationToken ct) => client.GetAsync<JsonNode>(path, ct);
 
     public Task<ApiResponse> SendAsync(HttpMethod method, string path, object? body, CancellationToken ct) =>
-        client.SendAsync(method, path, body, ct);
-}
-
-/// <summary>Turns a failed API call into the only error text a report may carry (FR-028): status and problem title.</summary>
-public static class ApiErrors
-{
-    public static string Describe(Exception ex) => ex switch
-    {
-        UmbracoApiException { StatusCode: { } status } api => $"HTTP {(int)status} {api.Message}",
-        UmbracoApiException api => api.Message,
-        UmbracoAuthException auth => auth.Message,
-        InvalidDataException or NotSupportedException => ex.Message,
-        _ => ex.GetType().Name,
-    };
-
-    /// <summary>
-    /// A failure that belongs to one item: an API refusal (not 401), a value that cannot be written, or an answer the tool
-    /// cannot read. A cancelled run, a rejected token and programming errors are not item failures and propagate.
-    /// </summary>
-    public static bool IsItemFailure(Exception ex, CancellationToken ct) =>
-        !ct.IsCancellationRequested
-        && ex is UmbracoApiException { StatusCode: not HttpStatusCode.Unauthorized }
-            or InvalidDataException or InvalidOperationException or FormatException or KeyNotFoundException or System.Text.Json.JsonException;
+        method == HttpMethod.Delete
+            ? throw new InvalidOperationException("The migrator never deletes anything: DELETE is not allowed (FR-015b).")
+            : client.SendAsync(method, path, body, ct);
 }

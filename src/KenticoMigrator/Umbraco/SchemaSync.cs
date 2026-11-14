@@ -265,7 +265,7 @@ public sealed class SchemaSync(IUmbracoApi api)
         {
             if (!dataTypeIds.TryGetValue(p.DataTypeKey, out var dataTypeId))
             {
-                throw new InvalidDataException($"The data type of property '{p.Alias}' is not available in the target.");
+                throw new MappingException(p.Alias, "The data type of the property is not available in the target.");
             }
 
             return new PropertyTypeRequest(

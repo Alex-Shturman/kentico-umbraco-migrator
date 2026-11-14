@@ -34,7 +34,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
     {
         ArgumentNullException.ThrowIfNull(request);
         return request.Command == CliArguments.Counts
-            ? await CountsAsync(request, ct).ConfigureAwait(false)
+            ? await CountsAsync(ct).ConfigureAwait(false)
             : await RunPhasesAsync(request, ct).ConfigureAwait(false);
     }
 
@@ -183,9 +183,8 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         return exit;
     }
 
-    private async Task<int> CountsAsync(RunRequest request, CancellationToken ct)
+    private async Task<int> CountsAsync(CancellationToken ct)
     {
-        _ = request;
         var source = await reader.CountAsync(ct).ConfigureAwait(false);
         output.WriteLine($"source: {string.Join(", ", source.DocumentsByClass.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => $"{p.Key} {p.Value}"))}; attachments {source.Attachments}; media files {source.MediaFiles}; aliases {source.Aliases}");
 

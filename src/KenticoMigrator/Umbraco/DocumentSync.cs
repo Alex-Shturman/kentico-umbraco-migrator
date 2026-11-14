@@ -174,7 +174,7 @@ public sealed class DocumentSync
     {
         if (!_types.TryGetValue(doc.TypeAlias, out var type))
         {
-            throw new InvalidDataException($"Document type '{doc.TypeAlias}' is not part of the plan.");
+            throw new MappingException(doc.TypeAlias, "Document type is not part of the plan.");
         }
 
         var body = new DocumentCreateRequest(

@@ -12,7 +12,22 @@ public sealed record UmbracoOptions(
     string BaseUrl,
     string ClientId,
     string ClientSecret,
-    bool AllowUntrustedCertificate = false);
+    bool AllowUntrustedCertificate = false)
+{
+    /// <summary>
+    /// The client secret travels in every token request, so <see cref="BaseUrl"/> must be an absolute https URL; plain http is
+    /// accepted for the loopback host only. Throws <see cref="InvalidDataException"/> (exit code 2) without echoing the value.
+    /// </summary>
+    public void Validate()
+    {
+        if (!Uri.TryCreate(BaseUrl, UriKind.Absolute, out var uri)
+            || !(uri.Scheme == Uri.UriSchemeHttps
+                || (uri.Scheme == Uri.UriSchemeHttp && ManagementApiClient.IsLoopbackHostOf(BaseUrl, uri.Host))))
+        {
+            throw new InvalidDataException("Umbraco:BaseUrl must be an absolute https URL (http is accepted for localhost only).");
+        }
+    }
+}
 
 /// <summary>Status, body and <c>Location</c> header of a successful Management API write.</summary>
 public sealed record ApiResponse(HttpStatusCode Status, string Body, Uri? Location);
@@ -90,6 +105,7 @@ public sealed class ManagementApiClient : IDisposable
     /// </summary>
     public static ManagementApiClient Create(UmbracoOptions options)
     {
+        options.Validate();
         var handler = new SocketsHttpHandler();
         if (options.AllowUntrustedCertificate)
         {

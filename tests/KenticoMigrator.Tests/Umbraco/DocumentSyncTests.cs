@@ -144,7 +144,7 @@ public sealed class DocumentSyncTests
         var results = await NewSync(api).SyncAsync([bad, Doc(2, null, "Good")], Options, Ct);
 
         Assert.Equal([ItemOutcome.Failed, ItemOutcome.Created], results.Select(r => r.Outcome));
-        Assert.Contains("whole number", results[0].Error);
+        Assert.Equal("Mapping error", results[0].Error);
     }
 
     [Fact]

@@ -53,14 +53,6 @@ try
         if (!string.IsNullOrWhiteSpace(config["Umbraco:ClientSecret"]))
         {
             var baseUrl = config["Umbraco:BaseUrl"] is { Length: > 0 } url ? url : DefaultBaseUrl;
-            // The client secret travels in every token request: plain http is only acceptable for the local host.
-            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri)
-                || !(baseUri.Scheme == "https" || (baseUri.Scheme == "http" && ManagementApiClient.IsLoopbackHostOf(baseUrl, baseUri.Host))))
-            {
-                Console.Error.WriteLine("Umbraco:BaseUrl must be an absolute https URL (http is accepted for localhost only).");
-                return ExitCodes.ConfigurationOrPlanError;
-            }
-
             client = ManagementApiClient.Create(new UmbracoOptions(
                 baseUrl,
                 config["Umbraco:ClientId"] is { Length: > 0 } id ? id : DefaultClientId,
