@@ -163,4 +163,35 @@ public sealed class RichTextRewriterTests
             result.Html);
         Assert.Equal(result.Html, Create().Rewrite(result.Html).Html);
     }
+
+    [Theory]
+    [InlineData("<p>a<br />b</p><a href=\"https://example.test/x\">e</a>")]
+    [InlineData("<table><tr><td>c</td></tr></table><a href=\"#top\">t</a>")]
+    [InlineData("<p class='x'>q</p><a href=\"/zzz\">u</a>")]
+    [InlineData("<p>a\u00A0b</p><a href=\"mailto:a@b.c\">m</a>")]
+    public void Input_is_returned_byte_for_byte_when_nothing_is_rewritten(string html)
+    {
+        var result = Create().Rewrite(html);
+
+        Assert.Equal(html, result.Html);
+        Assert.Equal(0, result.Rewritten);
+    }
+
+    [Theory]
+    [InlineData("<a href=\"javascript:void(0)\">x</a>")]
+    [InlineData("<a href=\"JavaScript:alert(1)\">x</a>")]
+    [InlineData("<a href=\"vbscript:run\">x</a>")]
+    [InlineData("<a href=\"data:text/html;base64,AAAA\">x</a>")]
+    [InlineData("<img src=\"javascript:void(0)\">")]
+    [InlineData("<img src=\"vbscript:x\">")]
+    [InlineData("<img src=\"data:image/png;base64,AAAA\">")]
+    [InlineData("<a href=\"\">x</a>")]
+    [InlineData("<img src=\"\">")]
+    public void Javascript_href_is_not_reported_as_unresolved(string html)
+    {
+        var result = Create().Rewrite(html);
+
+        Assert.Empty(result.Unresolved);
+        Assert.Equal(html, result.Html);
+    }
 }

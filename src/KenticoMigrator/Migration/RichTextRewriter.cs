@@ -1,4 +1,5 @@
 using AngleSharp.Dom;
+using System.Text.RegularExpressions;
 using AngleSharp.Html.Parser;
 
 namespace KenticoMigrator.Migration;
@@ -8,15 +9,19 @@ namespace KenticoMigrator.Migration;
 /// from research R6:
 /// <c>&lt;a href="/{localLink:KEY}" type="document"&gt;</c>, <c>&lt;a href="/{localLink:KEY}" type="media"&gt;</c> and
 /// <c>&lt;img src="MEDIA URL" data-udi="umb://media/KEYNODASHES"&gt;</c>. Everything else is left as it is, and rewriting
-/// rewritten markup changes nothing.
+/// rewritten markup changes nothing. When no link or image needs rewriting the input is returned byte for byte; when
+/// something is rewritten the whole fragment is serialised by AngleSharp, which normalises unrelated markup (for example
+/// <c>&lt;br /&gt;</c> becomes <c>&lt;br&gt;</c>) without changing its meaning.
+/// An instance holds one parser and is not thread-safe: use one rewriter per thread.
 /// </summary>
-public sealed class RichTextRewriter
+public sealed partial class RichTextRewriter
 {
     private const string LocalLinkMarker = "{localLink:";
     private const string MediaUdiPrefix = "umb://media/";
     private const string DocumentType = "document";
     private const string MediaTypeName = "media";
 
+    private readonly HtmlParser _parser = new();
     private readonly UrlIndex _index;
     private readonly Func<Guid, string?>? _mediaUrlOf;
 
@@ -39,7 +44,7 @@ public sealed class RichTextRewriter
             return new RewriteResult(string.Empty, 0, 0, 0, []);
         }
 
-        using var document = new HtmlParser().ParseDocument(string.Empty);
+        using var document = _parser.ParseDocument(string.Empty);
         var body = document.Body!;
         body.InnerHtml = html;
 
@@ -53,8 +58,7 @@ public sealed class RichTextRewriter
         {
             var isImage = element.LocalName == "img";
             var reference = element.GetAttribute(isImage ? "src" : "href")?.Trim();
-            if (string.IsNullOrEmpty(reference) || IsAlreadyRewritten(element, reference, isImage)
-                || reference.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(reference) || IsNotNavigable(reference) || IsAlreadyRewritten(element, reference, isImage))
             {
                 continue;
             }
@@ -78,6 +82,9 @@ public sealed class RichTextRewriter
 
                     rewritten++;
                     break;
+                // Counting asymmetry on purpose: off-site links and links into the application are counted because a
+                // reviewer may want to check them (FR-021); mail and anchor links point to nothing of the old site, so
+                // there is nothing to review and they are not counted. Unresolved links are listed, never counted.
                 case LinkKind.External:
                     external++;
                     break;
@@ -97,8 +104,15 @@ public sealed class RichTextRewriter
             }
         }
 
-        return new RewriteResult(body.InnerHtml, rewritten, external, application, unresolved);
+        return new RewriteResult(rewritten > 0 ? body.InnerHtml : html, rewritten, external, application, unresolved);
     }
+
+    // javascript:, vbscript:, data:, and any other scheme without "//" (mailto: and tel: included) lead nowhere on
+    // the old site: ignored, neither counted nor reported as unresolved.
+    private static bool IsNotNavigable(string reference) => NonNavigableScheme().IsMatch(reference);
+
+    [GeneratedRegex(@"^[a-z][a-z0-9+.\-]*:(?!//)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex NonNavigableScheme();
 
     private static bool IsAlreadyRewritten(IElement element, string reference, bool isImage) =>
         isImage
