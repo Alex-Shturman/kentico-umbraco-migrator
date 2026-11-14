@@ -116,7 +116,7 @@ internal static class PlannedShape
             case "MediaMultiple":
                 return raw is IEnumerable<Guid> many ? Picker(ownerKey, alias, [.. many]) : null;
             default:
-                throw new NotSupportedException($"Editor '{planned.Editor}' of property '{alias}' has no write shape.");
+                throw new MappingException(alias, "The editor has no write shape.");
         }
     }
 
@@ -131,17 +131,17 @@ internal static class PlannedShape
         }
         catch (OverflowException)
         {
-            throw new InvalidDataException($"Property '{alias}' is mapped to an integer editor but the source value is out of range.");
+            throw new MappingException(alias, "The value of an integer property is out of range.");
         }
 
         if (number != decimal.Truncate(number))
         {
-            throw new InvalidDataException($"Property '{alias}' is mapped to an integer editor but the source value is not a whole number.");
+            throw new MappingException(alias, "The value of an integer property is not a whole number.");
         }
 
         if (number is < int.MinValue or > int.MaxValue)
         {
-            throw new InvalidDataException($"Property '{alias}' is mapped to an integer editor but the source value is out of range.");
+            throw new MappingException(alias, "The value of an integer property is out of range.");
         }
 
         return (long)number;

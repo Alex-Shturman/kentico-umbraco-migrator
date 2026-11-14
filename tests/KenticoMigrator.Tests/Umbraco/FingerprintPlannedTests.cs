@@ -247,9 +247,9 @@ public sealed class FingerprintPlannedTests
         var fractional = Document(new Dictionary<string, PlannedValue> { ["count"] = new("Integer", 1.5m) });
         var whole = Document(new Dictionary<string, PlannedValue> { ["count"] = new("Integer", 2.0m) });
 
-        var ex = Assert.Throws<InvalidDataException>(() => OwnedValues.FromPlanned(fractional));
+        var ex = Assert.Throws<MappingException>(() => OwnedValues.FromPlanned(fractional));
 
-        Assert.Contains("count", ex.Message);
+        Assert.Equal("count", ex.Alias);
         Assert.DoesNotContain("1.5", ex.Message);
         Assert.Equal(2L, (long)OwnedValues.FromPlanned(whole).Values["count"]!);
     }
@@ -263,9 +263,9 @@ public sealed class FingerprintPlannedTests
     {
         var doc = Document(new Dictionary<string, PlannedValue> { ["count"] = new("Integer", value) });
 
-        var ex = Assert.Throws<InvalidDataException>(() => OwnedValues.FromPlanned(doc));
+        var ex = Assert.Throws<MappingException>(() => OwnedValues.FromPlanned(doc));
 
-        Assert.Contains("count", ex.Message);
+        Assert.Equal("count", ex.Alias);
         Assert.DoesNotContain("2147483648", ex.Message);
     }
 

@@ -144,7 +144,7 @@ public sealed class DocumentSyncTests
         var results = await NewSync(api).SyncAsync([bad, Doc(2, null, "Good")], Options, Ct);
 
         Assert.Equal([ItemOutcome.Failed, ItemOutcome.Created], results.Select(r => r.Outcome));
-        Assert.Equal("Mapping error", results[0].Error);
+        Assert.Equal("Mapping error in count", results[0].Error);
     }
 
     [Fact]
@@ -458,20 +458,73 @@ public sealed class DocumentSyncTests
     }
 
     [Fact]
-    public async Task Page_with_pending_changes_that_should_be_published_is_published_again()
+    public async Task Draft_an_editor_saved_on_a_property_the_tool_does_not_own_is_not_published()
     {
         var api = new FakeUmbracoApi();
         var docs = new[] { Doc(1, null, "Live", publish: true) };
         await NewSync(api).SyncAsync(docs, Options, Ct);
-        // A PUT succeeded earlier and its publish failed: the page now has changes that are not published.
+        // An editor saved a change to a property the tool does not write and held it back: pending changes, owned values equal.
         api.Stored("document", GuidFor(1))!["variants"]![0]!["state"] = "PublishedPendingChanges";
         api.Calls.Clear();
 
         var results = await NewSync(api).SyncAsync(docs, Options, Ct);
 
-        Assert.Equal(ItemOutcome.Updated, results.Single().Outcome);
-        Assert.Equal([GuidFor(1)], api.PublishedKeys);
-        Assert.DoesNotContain(api.Writes, c => c.Method == HttpMethod.Put && c.Path == $"/document/{GuidFor(1):D}");
+        Assert.Equal(ItemOutcome.Unchanged, results.Single().Outcome);
+        Assert.Empty(api.Writes);
+    }
+
+    [Fact]
+    public async Task Publish_is_retried_once_after_a_transient_failure()
+    {
+        var failures = 0;
+        var api = new FakeUmbracoApi
+        {
+            Failure = c => c.Path.EndsWith("/publish", StringComparison.Ordinal) && failures++ == 0
+                ? FakeUmbracoApi.Problem(HttpStatusCode.BadGateway, "Bad gateway")
+                : null,
+        };
+
+        var results = await NewSync(api).SyncAsync([Doc(1, null, "Live", publish: true)], Options, Ct);
+
+        Assert.Equal(ItemOutcome.Created, results.Single().Outcome);
+        Assert.Equal(2, api.Writes.Count(c => c.Path.EndsWith("/publish", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task Publish_that_keeps_failing_makes_the_page_failed_and_a_refusal_is_not_retried()
+    {
+        var transient = new FakeUmbracoApi
+        {
+            Failure = c => c.Path.EndsWith("/publish", StringComparison.Ordinal) ? FakeUmbracoApi.Problem(HttpStatusCode.ServiceUnavailable, "Unavailable") : null,
+        };
+        var refused = new FakeUmbracoApi
+        {
+            Failure = c => c.Path.EndsWith("/publish", StringComparison.Ordinal) ? FakeUmbracoApi.Problem(HttpStatusCode.BadRequest, "Parent not published") : null,
+        };
+
+        var first = await NewSync(transient).SyncAsync([Doc(1, null, "Live", publish: true)], Options, Ct);
+        var second = await NewSync(refused).SyncAsync([Doc(1, null, "Live", publish: true)], Options, Ct);
+
+        Assert.Equal((ItemOutcome.Failed, "HTTP 503 Unavailable"), (first.Single().Outcome, first.Single().Error));
+        Assert.Equal(2, transient.Writes.Count(c => c.Path.EndsWith("/publish", StringComparison.Ordinal)));
+        Assert.Equal(ItemOutcome.Failed, second.Single().Outcome);
+        Assert.Single(refused.Writes, c => c.Path.EndsWith("/publish", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Failed_sort_is_retried_once_in_the_same_run()
+    {
+        var sorts = 0;
+        var api = new FakeUmbracoApi
+        {
+            Failure = c => c.Path == "/document/sort" && sorts++ == 0 ? FakeUmbracoApi.Problem(HttpStatusCode.BadGateway, "Bad gateway") : null,
+        };
+        var docs = new[] { Doc(1, null, "Root"), Doc(2, 1, "A", sortOrder: 2), Doc(3, 1, "B", sortOrder: 1) };
+
+        var results = await NewSync(api).SyncAsync(docs, Options, Ct);
+
+        Assert.Equal(ItemOutcome.Updated, Assert.Single(results, r => r.Kind == ItemKinds.Sort).Outcome);
+        Assert.Equal([GuidFor(3), GuidFor(2)], api.ChildrenOf(GuidFor(1)));
     }
 
     [Fact]

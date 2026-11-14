@@ -15,8 +15,6 @@ public sealed record SyncOptions(bool OverwriteEdited = false, bool Preview = fa
 /// </summary>
 public sealed class DocumentSync
 {
-    private const string PendingChangesState = "PublishedPendingChanges";
-
     private static readonly Guid RootKey = Guid.Empty;
 
     // Stands for a parent that is not the planned one; it never equals a planned parent key, so the fingerprint differs.
@@ -147,9 +145,10 @@ public sealed class DocumentSync
 
         if (storedFingerprint == plannedFingerprint)
         {
-            // A page that should be published but is not (an earlier publish failed: never published, or published with changes
-            // that were not) is published now. A page an editor unpublished keeps its publish date and state Draft and is left alone.
-            if (doc.Publish && (NeverPublished(current) || State(current) == PendingChangesState))
+            // A page that should be published but never was (an earlier publish failed) is published now. A page an editor
+            // unpublished keeps its publish date and is left alone, and pending changes are never published: they may be an
+            // editor's held-back draft (FR-015a).
+            if (doc.Publish && NeverPublished(current))
             {
                 return options.Preview ? ItemOutcome.WouldUpdate : await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
             }
@@ -232,7 +231,8 @@ public sealed class DocumentSync
     {
         if (doc.Publish)
         {
-            await _api.SendAsync(HttpMethod.Put, $"{DocumentPath(doc.Key)}/publish", new PublishRequest([new PublishScheduleRequest(null)]), ct).ConfigureAwait(false);
+            var body = new PublishRequest([new PublishScheduleRequest(null)]);
+            await WithOneRetryAsync(() => _api.SendAsync(HttpMethod.Put, $"{DocumentPath(doc.Key)}/publish", body, ct), transientOnly: true).ConfigureAwait(false);
         }
 
         return written;
@@ -272,7 +272,7 @@ public sealed class DocumentSync
 
                 var order = wanted.Concat(children.Where(c => !wantedSet.Contains(c))).ToList();
                 var body = new SortRequest(parent is { } id ? new IdRef(id) : null, [.. order.Select((key, index) => new SortItemRequest(key, index))]);
-                await _api.SendAsync(HttpMethod.Put, "/document/sort", body, ct).ConfigureAwait(false);
+                await WithOneRetryAsync(() => _api.SendAsync(HttpMethod.Put, "/document/sort", body, ct), transientOnly: false).ConfigureAwait(false);
                 children.Clear();
                 children.AddRange(order);
                 results.Add(SortResult(parent, parentDoc, ItemOutcome.Updated, null));
@@ -286,6 +286,20 @@ public sealed class DocumentSync
 
     private static ItemResult SortResult(Guid? parent, TargetDocument? parentDoc, ItemOutcome outcome, string? error) =>
         new(parent ?? Guid.Empty, ItemKinds.Sort, parentDoc?.TypeAlias ?? string.Empty, parentDoc?.OldPath ?? "/", outcome, error);
+
+    // One more try for a call whose failure may be momentary. A publish is retried only for a server or network error (a refusal
+    // such as "parent not published" would fail again); a sort is retried for any API failure.
+    private static async Task WithOneRetryAsync(Func<Task> call, bool transientOnly)
+    {
+        try
+        {
+            await call().ConfigureAwait(false);
+        }
+        catch (UmbracoApiException ex) when (!transientOnly || ex.StatusCode is null || (int)ex.StatusCode >= 500)
+        {
+            await call().ConfigureAwait(false);
+        }
+    }
 
     private async Task<List<Guid>> ChildrenOfAsync(Guid? parent, CancellationToken ct)
     {
@@ -320,9 +334,6 @@ public sealed class DocumentSync
     private static string? StoredFingerprint(JsonNode document) =>
         document["values"]?.AsArray()
             .FirstOrDefault(v => v?["alias"]?.GetValue<string>() == PlanAliases.Fingerprint)?["value"]?.GetValue<string>();
-
-    private static string? State(JsonNode document) =>
-        document["variants"]?.AsArray().FirstOrDefault()?["state"]?.GetValue<string>();
 
     private static bool NeverPublished(JsonNode document) =>
         document["variants"]?.AsArray().FirstOrDefault()?["publishDate"] is null;
