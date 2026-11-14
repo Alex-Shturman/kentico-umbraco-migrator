@@ -1,7 +1,7 @@
 namespace KenticoMigrator.Migration;
 
 /// <summary>Fixed aliases of the types the tool creates itself (MAPPING.md 2.1).</summary>
-internal static class PlanAliases
+public static class PlanAliases
 {
     public const string Folder = "folder";
     public const string Seo = "seoComposition";
@@ -13,6 +13,7 @@ internal static class PlanAliases
     public const string MetaTitle = "metaTitle";
     public const string MetaDescription = "metaDescription";
     public const string MetaKeywords = "metaKeywords";
+    public const string UrlName = "umbracoUrlName";
     public const string NaviHide = "umbracoNaviHide";
     public const string HideFromSitemap = "hideFromSitemap";
     public const string SourceKey = "migrationSourceKey";
@@ -68,8 +69,11 @@ public sealed partial class PlanBuilder
         (PlanAliases.HideFromSitemap, "Hide from sitemap", "TrueFalse", "Navigation"),
     ];
 
+    // umbracoUrlName is written for every migrated item (FR-022), folders included, so it lives here with the
+    // migration properties that every created type carries.
     private static readonly (string Alias, string Name, string Editor, string Group)[] MigrationProperties =
     [
+        (PlanAliases.UrlName, "URL name", "TextBox", "Migration"),
         (PlanAliases.SourceKey, "Migration source key", "TextBox", "Migration"),
         (PlanAliases.Fingerprint, "Migration fingerprint", "TextBox", "Migration"),
     ];

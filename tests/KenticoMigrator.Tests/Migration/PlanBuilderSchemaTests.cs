@@ -44,7 +44,7 @@ public sealed class PlanBuilderSchemaTests
         }
 
         var migration = plan.DocumentTypes.Single(t => t.Alias == "migrationComposition");
-        Assert.Equal(["migrationSourceKey", "migrationFingerprint"], migration.Properties.Select(p => p.Alias));
+        Assert.Equal(["umbracoUrlName", "migrationSourceKey", "migrationFingerprint"], migration.Properties.Select(p => p.Alias));
     }
 
     [Fact]
