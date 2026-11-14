@@ -3,9 +3,8 @@
   "name": "sample",
   "ownHosts": ["kayaks.example", "www.kayaks.example"],
 
-  // PLACEHOLDER: the orchestrator fills mediaRoot and notUploadedPaths from Track 2 (T039).
   "mediaRoot": "sample/media",
-  "notUploadedPaths": ["/Files/placeholder"],
+  "notUploadedPaths": ["/Downloads/Paddling-Map"],
 
   "excludedPathPrefixes": ["/Account"],
   "folderPaths": ["/Catalog"],

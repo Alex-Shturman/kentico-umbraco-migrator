@@ -13,6 +13,8 @@ public sealed class SampleProfileTests
         Assert.Equal("sample", profile.Name);
         Assert.Contains("/Account", profile.ExcludedPathPrefixes);
         Assert.Contains("/Catalog", profile.FolderPaths);
+        Assert.Equal(["/Downloads/Paddling-Map"], profile.NotUploadedPaths);
+        Assert.Equal("sample/media", profile.MediaRoot);
         Assert.Contains(profile.Types, t => t.KenticoClass == "CMS.Article");
         Assert.Contains(profile.Types, t => t.KenticoClass == "DEMO.Product");
         Assert.Contains(profile.Types, t => t.PathOverride == "/Articles");
