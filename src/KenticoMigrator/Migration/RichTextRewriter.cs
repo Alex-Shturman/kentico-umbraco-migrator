@@ -63,7 +63,7 @@ public sealed class RichTextRewriter
             switch (kind)
             {
                 case LinkKind.Document when !isImage && key is { } documentKey:
-                    SetLink(element, documentKey, DocumentType);
+                    SetLink(element, documentKey, DocumentType, Suffix(reference));
                     rewritten++;
                     break;
                 case LinkKind.Media when key is { } mediaKey:
@@ -73,7 +73,7 @@ public sealed class RichTextRewriter
                     }
                     else
                     {
-                        SetLink(element, mediaKey, MediaTypeName);
+                        SetLink(element, mediaKey, MediaTypeName, Suffix(reference));
                     }
 
                     rewritten++;
@@ -106,7 +106,7 @@ public sealed class RichTextRewriter
             : reference.Contains(LocalLinkMarker, StringComparison.Ordinal);
 
     // href first, then type, then the remaining attributes in their original order (the verified form).
-    private static void SetLink(IElement anchor, Guid key, string type)
+    private static void SetLink(IElement anchor, Guid key, string type, string suffix)
     {
         var others = anchor.Attributes
             .Where(a => a.Name is not ("href" or "type"))
@@ -117,12 +117,19 @@ public sealed class RichTextRewriter
             anchor.RemoveAttribute(name);
         }
 
-        anchor.SetAttribute("href", $"/{LocalLinkMarker}{key:D}}}");
+        anchor.SetAttribute("href", $"/{LocalLinkMarker}{key:D}}}{suffix}");
         anchor.SetAttribute("type", type);
         foreach (var (name, value) in others)
         {
             anchor.SetAttribute(name, value);
         }
+    }
+
+    // The query and fragment of the old link (for example "#team") belong after the local link.
+    private static string Suffix(string reference)
+    {
+        var cut = reference.IndexOfAny(['?', '#']);
+        return cut >= 0 ? reference[cut..] : string.Empty;
     }
 
     private void SetImage(IElement image, Guid key)

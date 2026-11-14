@@ -150,4 +150,17 @@ public sealed class RichTextRewriterTests
         Assert.Equal(string.Empty, result.Html);
         Assert.Equal(0, result.Rewritten);
     }
+
+    [Fact]
+    public void Fragment_and_query_of_a_rewritten_link_are_kept()
+    {
+        var html = $"""<a href="/About#team">t</a><a href="/about.aspx?tab=2#x">q</a><a href="/getmedia/{FileKey}/f.pdf?download=1">m</a>""";
+
+        var result = Create().Rewrite(html);
+
+        Assert.Equal(
+            $$"""<a href="/{localLink:{{PageKey}}}#team" type="document">t</a><a href="/{localLink:{{PageKey}}}?tab=2#x" type="document">q</a><a href="/{localLink:{{FileKey}}}?download=1" type="media">m</a>""",
+            result.Html);
+        Assert.Equal(result.Html, Create().Rewrite(result.Html).Html);
+    }
 }
