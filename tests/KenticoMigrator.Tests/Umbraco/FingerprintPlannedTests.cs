@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using KenticoMigrator.Kentico;
 using KenticoMigrator.Migration;
 using KenticoMigrator.Tests.Support;
 using KenticoMigrator.Umbraco;
@@ -202,5 +203,54 @@ public sealed class FingerprintPlannedTests
 
         Assert.Equal(Fingerprint.Compute(read), Fingerprint.Compute(planned));
         Assert.NotEqual(Fingerprint.Compute(planned), Fingerprint.Compute(edited));
+    }
+
+    [Fact]
+    public void Every_owned_alias_of_every_planned_document_is_a_property_of_its_type_or_compositions()
+    {
+        var site = SourceFactory.SampleSite() with
+        {
+            Attachments = [SourceFactory.Attachment(SourceFactory.GuidFor(1001), 9, "a.jpg", "Images", order: 1)],
+            UnlinkedRows = new Dictionary<string, IReadOnlyList<SourceRow>>
+            {
+                ["DEMO.Brand"] = [new SourceRow(99, SourceFactory.Fields(("Name", "Ghost")))],
+            },
+        };
+        var plan = PlanBuilder.Build(site, SourceFactory.SampleProfile());
+        Assert.Contains(plan.Documents, d => d.TypeAlias == "folder");
+
+        foreach (var doc in plan.Documents)
+        {
+            var type = plan.DocumentTypes.Single(t => t.Alias == doc.TypeAlias);
+            var defined = type.Properties.Concat(type.Compositions.SelectMany(c => plan.DocumentTypes.Single(t => t.Alias == c).Properties))
+                .Select(p => p.Alias)
+                .ToHashSet();
+
+            foreach (var alias in OwnedValues.FromPlanned(doc).Values.Keys)
+            {
+                Assert.True(defined.Contains(alias), $"{doc.OldPath}: '{alias}' is not a property of '{doc.TypeAlias}'");
+            }
+        }
+    }
+
+    [Fact]
+    public void Dropdown_choice_that_is_not_text_is_written_in_invariant_culture()
+    {
+        var doc = Document(new Dictionary<string, PlannedValue> { ["kind"] = new("DropDown", 3) });
+
+        Assert.Equal(["3"], OwnedValues.FromPlanned(doc).Values["kind"]!.AsArray().Select(n => (string?)n));
+    }
+
+    [Fact]
+    public void Integer_with_a_fractional_part_is_refused_not_rounded()
+    {
+        var fractional = Document(new Dictionary<string, PlannedValue> { ["count"] = new("Integer", 1.5m) });
+        var whole = Document(new Dictionary<string, PlannedValue> { ["count"] = new("Integer", 2.0m) });
+
+        var ex = Assert.Throws<InvalidDataException>(() => OwnedValues.FromPlanned(fractional));
+
+        Assert.Contains("count", ex.Message);
+        Assert.DoesNotContain("1.5", ex.Message);
+        Assert.Equal(2L, (long)OwnedValues.FromPlanned(whole).Values["count"]!);
     }
 }

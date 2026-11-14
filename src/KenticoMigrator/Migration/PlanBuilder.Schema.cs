@@ -69,8 +69,11 @@ public sealed partial class PlanBuilder
         (PlanAliases.HideFromSitemap, "Hide from sitemap", "TrueFalse", "Navigation"),
     ];
 
+    // umbracoUrlName is written for every migrated item (FR-022), folders included, so it lives here with the
+    // migration properties that every created type carries.
     private static readonly (string Alias, string Name, string Editor, string Group)[] MigrationProperties =
     [
+        (PlanAliases.UrlName, "URL name", "TextBox", "Migration"),
         (PlanAliases.SourceKey, "Migration source key", "TextBox", "Migration"),
         (PlanAliases.Fingerprint, "Migration fingerprint", "TextBox", "Migration"),
     ];

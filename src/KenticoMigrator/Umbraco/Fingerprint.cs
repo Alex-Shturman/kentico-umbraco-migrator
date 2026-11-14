@@ -92,7 +92,7 @@ internal static class PlannedShape
                 var markup = System.Convert.ToString(raw, CultureInfo.InvariantCulture)!;
                 return new JsonObject { ["markup"] = rewriteRichText?.Invoke(markup) ?? markup, ["blocks"] = null };
             case "Integer":
-                return raw is null ? null : JsonValue.Create(System.Convert.ToInt64(raw, CultureInfo.InvariantCulture));
+                return raw is null ? null : JsonValue.Create(WholeNumber(alias, raw));
             case "Decimal":
                 return raw is null ? null : JsonValue.Create(System.Convert.ToDecimal(raw, CultureInfo.InvariantCulture));
             case "TrueFalse":
@@ -108,7 +108,9 @@ internal static class PlannedShape
             case "Tags":
                 return raw is IEnumerable<string> tags && tags.Any() ? new JsonArray([.. tags.Select(t => (JsonNode?)JsonValue.Create(t))]) : null;
             case "DropDown":
-                return raw is string choice && choice.Length > 0 ? new JsonArray(JsonValue.Create(choice)) : null;
+                return raw is not null && System.Convert.ToString(raw, CultureInfo.InvariantCulture) is { Length: > 0 } choice
+                    ? new JsonArray(JsonValue.Create(choice))
+                    : null;
             case "MediaSingle":
                 return raw is Guid single ? Picker(ownerKey, alias, [single]) : null;
             case "MediaMultiple":
@@ -116,6 +118,18 @@ internal static class PlannedShape
             default:
                 throw new NotSupportedException($"Editor '{planned.Editor}' of property '{alias}' has no write shape.");
         }
+    }
+
+    // An Integer property never rounds: a fractional source value is a mapping error, reported without the value (FR-028).
+    private static long WholeNumber(string alias, object raw)
+    {
+        var number = System.Convert.ToDecimal(raw, CultureInfo.InvariantCulture);
+        if (number != decimal.Truncate(number))
+        {
+            throw new InvalidDataException($"Property '{alias}' is mapped to an integer editor but the source value is not a whole number.");
+        }
+
+        return (long)number;
     }
 
     private static JsonArray? Picker(Guid ownerKey, string alias, IReadOnlyList<Guid> media)

@@ -151,6 +151,8 @@ before the dependent code is considered done (Constitution IV).
   `Date Picker with time`, `Date Picker`, `Tags`, `Dropdown`, `Dropdown multiple`, `Media Picker`,
   `Multiple Media Picker`, `Image Media Picker`, `Upload File`, `Content Picker`, `Multi URL Picker`.
   There is no Decimal data type.
+- **Verify in T033**: null values on POST and PUT (a planned empty value is written as `value: null` to clear a
+  property). Fallback if Umbraco rejects or ignores them: omit the property on POST and send `""` or `[]` on PUT.
 - Tool-created data types: `POST /data-type` with
   `{ id, name, editorAlias, editorUiAlias, values: [...], parent: null }`.
   - Decimal: `editorAlias "Umbraco.Decimal"`, `editorUiAlias "Umb.PropertyEditorUi.Decimal"`, `values: []`.
