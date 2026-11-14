@@ -262,6 +262,8 @@ public sealed class ManagementApiClientTests
     [Theory]
     [InlineData("https://localhost:44317", "localhost", true)]
     [InlineData("https://127.0.0.1:44317", "127.0.0.1", true)]
+    [InlineData("https://[::1]:44317", "::1", true)]
+    [InlineData("https://[::1]:44317", "[::1]", true)]
     [InlineData("https://localhost:44317", "evil.example", false)]
     [InlineData("https://umbraco.example", "umbraco.example", false)]
     [InlineData("https://localhost:44317", null, false)]
