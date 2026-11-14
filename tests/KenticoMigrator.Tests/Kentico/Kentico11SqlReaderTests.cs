@@ -276,7 +276,26 @@ public sealed class Kentico11SqlReaderTests
 
         Assert.Equal(7, counts.Attachments);
         Assert.Equal(4, counts.MediaFiles);
-        Assert.Equal(0, counts.Aliases);
+        Assert.Equal(3, counts.Aliases);
+    }
+
+    [IntegrationFact]
+    public async Task Reads_aliases_and_flags_wildcards()
+    {
+        var site = await ReadSiteAsync();
+
+        var nodeIds = site.Documents.ToDictionary(d => d.AliasPath, d => d.NodeId);
+        Assert.Equal(3, site.Aliases.Count);
+
+        Assert.Contains(new SourceAlias(nodeIds["/Contact"], "/contact", false), site.Aliases);
+        Assert.Contains(new SourceAlias(nodeIds["/Contact"], "/visit", false), site.Aliases);
+
+        var wildcard = Assert.Single(site.Aliases, a => a.IsWildcard);
+        Assert.Equal(nodeIds["/Account/Profile"], wildcard.NodeId);
+        Assert.Equal("/{title}-i{ID}", wildcard.UrlPath);
+
+        // The hand-set URL path of a document is part of the document, not an alias.
+        Assert.Equal("/about-the-shop", site.Documents.Single(d => d.AliasPath == "/About").UrlPath);
     }
 
     [IntegrationFact]

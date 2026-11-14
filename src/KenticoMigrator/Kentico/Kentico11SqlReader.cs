@@ -71,7 +71,9 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         var attachments = await ReadAttachmentsAsync(connection, nodes, documents, classes, ct);
         var mediaFiles = await ReadMediaFilesAsync(connection, site.SiteId, ct);
 
-        return new SourceSite(site.SiteName, version, pageTypes, documents, attachments, [], mediaFiles, unlinked);
+        var aliases = await ReadAliasesAsync(connection, site.SiteId, ct);
+
+        return new SourceSite(site.SiteName, version, pageTypes, documents, attachments, aliases, mediaFiles, unlinked);
     }
 
     /// <inheritdoc />
@@ -143,7 +145,10 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         var mediaFiles = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
             "SELECT COUNT(*) FROM Media_File", cancellationToken: ct));
 
-        return new SourceCounts(perClass.ToDictionary(r => r.ClassName, r => r.Count), attachments, mediaFiles, 0);
+        var aliases = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM CMS_DocumentAlias", cancellationToken: ct));
+
+        return new SourceCounts(perClass.ToDictionary(r => r.ClassName, r => r.Count), attachments, mediaFiles, aliases);
     }
 
     private async Task<SqlConnection> OpenAsync(CancellationToken ct)
@@ -344,6 +349,26 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         return result.OrderBy(a => a.NodeId).ThenBy(a => a.Order).ThenBy(a => a.FileName, StringComparer.Ordinal).ToList();
     }
 
+    private static async Task<IReadOnlyList<SourceAlias>> ReadAliasesAsync(SqlConnection connection, int siteId, CancellationToken ct)
+    {
+        var rows = await connection.QueryAsync<AliasRow>(new CommandDefinition(
+            """
+            SELECT a.AliasNodeID, a.AliasURLPath, a.AliasWildcardRule
+            FROM CMS_DocumentAlias a
+            JOIN CMS_Tree n ON n.NodeID = a.AliasNodeID
+            WHERE n.NodeSiteID = @siteId AND n.NodeLinkedNodeID IS NULL
+            ORDER BY a.AliasNodeID, a.AliasID
+            """, new { siteId }, cancellationToken: ct));
+
+        // An alias without a path can only be a pure wildcard rule; keep the rule text as its path.
+        return rows.Select(r =>
+        {
+            var path = r.AliasURLPath ?? r.AliasWildcardRule ?? string.Empty;
+            var wildcard = !string.IsNullOrWhiteSpace(r.AliasWildcardRule) || path.Contains('{');
+            return new SourceAlias(r.AliasNodeID, path, wildcard);
+        }).ToList();
+    }
+
     private static async Task<IReadOnlyList<SourceMediaFile>> ReadMediaFilesAsync(SqlConnection connection, int siteId, CancellationToken ct)
     {
         var rows = await connection.QueryAsync<MediaFileRow>(new CommandDefinition(
@@ -465,6 +490,8 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         bool? AttachmentIsUnsorted,
         int? AttachmentOrder,
         Guid? AttachmentGroupGUID);
+
+    private sealed record AliasRow(int AliasNodeID, string? AliasURLPath, string? AliasWildcardRule);
 
     private sealed record MediaFileRow(
         Guid FileGUID,
