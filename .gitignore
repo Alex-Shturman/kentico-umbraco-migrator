@@ -17,6 +17,8 @@ obj/
 runs/
 appsettings.*.local.json
 .claude/.cc-writes/
+.claude/settings.local.json
+TestResults/
 
 # Local databases and backups
 *.bak
