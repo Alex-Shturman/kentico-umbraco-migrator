@@ -103,7 +103,7 @@ public sealed class DocumentSync
             }
 
             await CreateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
-            return await PublishAsync(doc, ItemOutcome.Created, ct).ConfigureAwait(false);
+            return await PublishAsync(doc, ItemOutcome.Created, true, ct).ConfigureAwait(false);
         }
 
         // An editor deleted the page, which only moved it to the recycle bin and left its key taken. The key cannot be
@@ -117,7 +117,7 @@ public sealed class DocumentSync
 
             await RestoreAsync(doc, ct).ConfigureAwait(false);
             await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
-            return await PublishAsync(doc, ItemOutcome.Created, ct).ConfigureAwait(false);
+            return await PublishAsync(doc, ItemOutcome.Created, true, ct).ConfigureAwait(false);
         }
 
         // R5: an item whose current owned values (and parent) no longer hash to what the tool stored was changed by an editor.
@@ -151,7 +151,7 @@ public sealed class DocumentSync
             }
 
             await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
-            return await PublishAsync(doc, ItemOutcome.EditedOverwritten, ct).ConfigureAwait(false);
+            return await PublishAsync(doc, ItemOutcome.EditedOverwritten, IsPublished(current), ct).ConfigureAwait(false);
         }
 
         if (moved)
@@ -164,7 +164,7 @@ public sealed class DocumentSync
 
             await MoveAsync(doc, siblings, ct).ConfigureAwait(false);
             await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
-            return await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
+            return await PublishAsync(doc, ItemOutcome.Updated, IsPublished(current), ct).ConfigureAwait(false);
         }
 
         if (storedFingerprint == plannedFingerprint)
@@ -174,7 +174,7 @@ public sealed class DocumentSync
             // changes may be an editor's held-back draft (FR-015a). It is only listed for review.
             if (doc.Publish && IsNotPublished(current))
             {
-                _notPublished.Add(new PlanIssue(PlanSeverities.Warning, doc.OldPath, $"Page {doc.Key:D} {NotPublishedMarker}; publish it in the back office, or change the page and re-run with --overwrite-edited."));
+                ListNotPublished(doc);
             }
 
             return ItemOutcome.Unchanged;
@@ -186,7 +186,7 @@ public sealed class DocumentSync
         }
 
         await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
-        return await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
+        return await PublishAsync(doc, ItemOutcome.Updated, IsPublished(current), ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -287,9 +287,15 @@ public sealed class DocumentSync
         await _api.SendAsync(HttpMethod.Put, DocumentPath(doc.Key), body, ct).ConfigureAwait(false);
     }
 
-    private async Task<ItemOutcome> PublishAsync(TargetDocument doc, ItemOutcome written, CancellationToken ct)
+    // FR-015a: a page this run created is published; a page this run only updated or moved is published only when it was published
+    // before the write, so a page an editor unpublished stays unpublished and is listed for review.
+    private async Task<ItemOutcome> PublishAsync(TargetDocument doc, ItemOutcome written, bool publishNow, CancellationToken ct)
     {
-        if (doc.Publish)
+        if (doc.Publish && !publishNow)
+        {
+            ListNotPublished(doc);
+        }
+        else if (doc.Publish)
         {
             var body = new PublishRequest([new PublishScheduleRequest(null)]);
             await _api.SendAsync(HttpMethod.Put, $"{DocumentPath(doc.Key)}/publish", body, ct).ConfigureAwait(false);
@@ -380,6 +386,16 @@ public sealed class DocumentSync
     private static string? StoredFingerprint(JsonNode document) =>
         document["values"]?.AsArray()
             .FirstOrDefault(v => v?["alias"]?.GetValue<string>() == PlanAliases.Fingerprint)?["value"]?.GetValue<string>();
+
+    private void ListNotPublished(TargetDocument doc) =>
+        _notPublished.Add(new PlanIssue(PlanSeverities.Warning, doc.OldPath, $"Page {doc.Key:D} {NotPublishedMarker}; publish it in the back office."));
+
+    // Published with a publish date: Umbraco clears the date on unpublish, so a page that was only ever saved has none.
+    private static bool IsPublished(JsonNode document)
+    {
+        var variant = document["variants"]?.AsArray().FirstOrDefault();
+        return variant?["state"]?.GetValue<string>() is "Published" or "PublishedPendingChanges" && variant["publishDate"] is not null;
+    }
 
     // Draft: never published or unpublished (Umbraco clears the publish date on unpublish, so the two look alike).
     private static bool IsNotPublished(JsonNode document) =>

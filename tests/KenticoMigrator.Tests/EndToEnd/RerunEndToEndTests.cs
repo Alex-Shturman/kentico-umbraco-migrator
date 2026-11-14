@@ -115,6 +115,36 @@ public sealed class RerunEndToEndTests
     }
 
     [Fact]
+    public async Task Source_change_updates_a_page_an_editor_unpublished_without_publishing_it()
+    {
+        using var host = EndToEndHost.Connect();
+        Assert.Equal(ExitCodes.Success, (await host.RunAsync(CliArguments.Migrate, ct: Ct)).ExitCode);
+        var page = (await TargetSnapshot.ReadAsync(host.Api, Ct)).Find("Home", "Articles", "Paddling basics");
+        const string PageOldPath = "/Articles/Paddling-Basics";
+        var publish = new { publishSchedules = new[] { new { culture = (string?)null } } };
+
+        try
+        {
+            await host.Api.SendAsync(HttpMethod.Put, $"/document/{page.Key:D}/unpublish", new { cultures = (string[]?)null }, Ct);
+
+            var run = await host.RunAsync(CliArguments.Migrate, ct: Ct, wrapReader: inner => new SourceEditingReader(inner, site => site with
+            {
+                Documents = [.. site.Documents.Select(d => d.AliasPath == PageOldPath ? d with { PageTitle = "Changed in the source" } : d)],
+            }));
+
+            Assert.True(run.ExitCode == ExitCodes.Success, run.Output);
+            Assert.Equal("Updated", Assert.Single(EndToEndHost.Items(run), i => i.Kind == ItemKinds.Document && i.OldPath == PageOldPath).Outcome);
+            Assert.Equal("Draft", (await ReadPageAsync(host, page.Key)).State);
+            Assert.Contains($"{PageOldPath}: Page {page.Key:D} is planned as published but not published in Umbraco", File.ReadAllText(Path.Combine(run.RunDir, "report.md")));
+        }
+        finally
+        {
+            await host.Api.SendAsync(HttpMethod.Put, $"/document/{page.Key:D}/publish", publish, Ct);
+            await host.RunAsync(CliArguments.Migrate, overwriteEdited: true, ct: Ct);
+        }
+    }
+
+    [Fact]
     public async Task Refused_publish_is_failed_once_then_unchanged_and_overwrite_republishes_after_the_cause_is_fixed()
     {
         using var host = EndToEndHost.Connect();

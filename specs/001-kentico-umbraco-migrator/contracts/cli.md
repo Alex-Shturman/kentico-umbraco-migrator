@@ -69,15 +69,16 @@ summary form, the path of the run folder, and the exit code. No field content is
   (after the API client's own retries on server and network errors) is reported as a failed `sort` item, and it is repaired on a
   later run only when a child of that parent is written again. An order an editor sets is not undone by a run that writes nothing under
   that parent.
-- **Publishing.** A page is published after it is created or updated; the API client already retries server and network errors
-  on the publish call. A page that is still not published is reported as failed. A later run never publishes a page that is not
-  published: it stays as it is, the outcome is `Unchanged` and the page is listed as a review item ("planned as published but
-  not published in Umbraco", with old path and key, in the Issues section of `report.md`). An update whose publish is refused (a non-transient answer such as "parent not published") stays as pending
-  changes, is reported `Failed` on that run and `Unchanged` afterwards, because the tool never publishes pending changes (they may
-  be an editor's held-back draft). After fixing the cause (for example by publishing the parent), publish the page in the back
-  office, or change the page in Umbraco and re-run with `--overwrite-edited` (or change it in the source and re-run): the tool
-  then writes the page again and publishes it (verified end to end by `RerunEndToEndTests`). A page an editor unpublished stays unpublished and is
-  listed as a review item. A page the plan does not publish is never published.
+- **Publishing (FR-015a).** One rule: a page the run creates (or restores from the recycle bin) is published; a page the run only
+  updates, moves or overwrites is published again only when it was published before the write (state `Published` or
+  `PublishedPendingChanges` with a publish date). A page an editor unpublished stays unpublished even when its source text changed;
+  it is listed as a review item ("planned as published but not published in Umbraco", with old path and key, in the Issues section
+  of `report.md`), as is any page a plain re-run finds unpublished. The API client already retries server and network errors on the
+  publish call; a page whose publish is refused is reported as failed. An update whose publish is refused (a non-transient answer
+  such as "parent not published") stays as pending changes, is `Failed` on that run and `Unchanged` afterwards, because the tool
+  never publishes pending changes on a plain re-run (they may be an editor's held-back draft). After fixing the cause, publish the
+  page in the back office, or change the page and re-run with `--overwrite-edited` (or change it in the source): the page is written
+  again and, having been published before, published (verified by `RerunEndToEndTests`). A page the plan does not publish is never published.
 - **Media.** Folders and files carry no stored fingerprint (research R5-media): an item whose name and folder are the planned ones
   is `Unchanged`; one an editor renamed or moved is reported as edited and left alone unless `--overwrite-edited` is given, which
   moves it back, uploads the file again and sets the planned name. A rename in the source is reported the same way. File bytes

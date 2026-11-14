@@ -506,12 +506,10 @@ public sealed class DocumentSyncTests
     [Fact]
     public async Task Refused_publish_leaves_pending_changes_that_are_unchanged_on_the_next_run()
     {
-        var api = new FakeUmbracoApi
-        {
-            Failure = c => c.Path.EndsWith("/publish", StringComparison.Ordinal) ? FakeUmbracoApi.Problem(HttpStatusCode.BadRequest, "Parent not published") : null,
-        };
+        var api = new FakeUmbracoApi();
         var docs = new[] { Doc(1, null, "Live", publish: true, title: "One") };
-        await NewSync(api).SyncAsync(docs, Options, Ct); // created, publish refused
+        await NewSync(api).SyncAsync(docs, Options, Ct); // created and published
+        api.Failure = c => c.Path.EndsWith("/publish", StringComparison.Ordinal) ? FakeUmbracoApi.Problem(HttpStatusCode.BadRequest, "Parent not published") : null;
         var changed = new[] { Doc(1, null, "Live", publish: true, title: "Two") };
 
         var failed = await NewSync(api).SyncAsync(changed, Options, Ct);
@@ -537,6 +535,72 @@ public sealed class DocumentSyncTests
         Assert.Equal(ItemOutcome.Unchanged, results.Single().Outcome);
         Assert.Empty(api.Writes);
         Assert.Equal("/Live", Assert.Single(sync.NotPublished).OldPath);
+    }
+
+    private async Task<FakeUmbracoApi> ApiWithUnpublishedPageAsync(int unpublishedId, params TargetDocument[] docs)
+    {
+        var api = new FakeUmbracoApi();
+        await NewSync(api).SyncAsync(docs, Options, Ct);
+        await api.SendAsync(HttpMethod.Put, $"/document/{GuidFor(unpublishedId):D}/unpublish", new { cultures = (string[]?)null }, Ct);
+        api.Calls.Clear();
+        return api;
+    }
+
+    [Fact]
+    public async Task Update_does_not_publish_a_page_an_editor_unpublished_and_lists_it_for_review()
+    {
+        var api = await ApiWithUnpublishedPageAsync(1, Doc(1, null, "Live", publish: true, title: "A"));
+        var sync = NewSync(api);
+
+        var results = await sync.SyncAsync([Doc(1, null, "Live", publish: true, title: "B")], Options, Ct);
+
+        Assert.Equal(ItemOutcome.Updated, results.Single().Outcome);
+        Assert.Empty(api.PublishedKeys);
+        Assert.Contains(api.Writes, c => c.Method == HttpMethod.Put && c.Path == $"/document/{GuidFor(1):D}");
+        Assert.Equal("/Live", Assert.Single(sync.NotPublished).OldPath);
+    }
+
+    [Fact]
+    public async Task Move_does_not_publish_a_page_an_editor_unpublished_and_lists_it_for_review()
+    {
+        var docs = new[] { Doc(1, null, "Root"), Doc(2, 1, "A"), Doc(3, 1, "B", publish: true) };
+        var api = await ApiWithUnpublishedPageAsync(3, docs);
+        var sync = NewSync(api);
+
+        var results = await sync.SyncAsync([docs[0], docs[1], Reparent(docs[2], 2)], Options, Ct);
+
+        Assert.Equal(ItemOutcome.Updated, results.Single(r => r.Key == GuidFor(3)).Outcome);
+        Assert.Contains(api.Writes, c => c.Path == $"/document/{GuidFor(3):D}/move");
+        Assert.Empty(api.PublishedKeys);
+        Assert.Equal("/B", Assert.Single(sync.NotPublished).OldPath);
+    }
+
+    [Fact]
+    public async Task Overwrite_does_not_publish_an_unpublished_page()
+    {
+        var api = await ApiWithUnpublishedPageAsync(1, Doc(1, null, "Live", publish: true, title: "A"));
+        api.Stored("document", GuidFor(1))!["values"]!.AsArray().Single(v => v!["alias"]!.GetValue<string>() == "title")!["value"] = "Edited";
+        var sync = NewSync(api);
+
+        var results = await sync.SyncAsync([Doc(1, null, "Live", publish: true, title: "A")], new SyncOptions(OverwriteEdited: true), Ct);
+
+        Assert.Equal(ItemOutcome.EditedOverwritten, results.Single().Outcome);
+        Assert.Empty(api.PublishedKeys);
+        Assert.Single(sync.NotPublished);
+    }
+
+    [Fact]
+    public async Task Update_publishes_a_page_with_pending_changes_and_a_page_created_by_the_same_run()
+    {
+        var api = new FakeUmbracoApi();
+        var sync = NewSync(api);
+        await sync.SyncAsync([Doc(1, null, "Live", publish: true, title: "A")], Options, Ct);
+        api.Calls.Clear();
+
+        await sync.SyncAsync([Doc(1, null, "Live", publish: true, title: "B")], Options, Ct);
+
+        Assert.Equal([GuidFor(1)], api.PublishedKeys);
+        Assert.Empty(sync.NotPublished);
     }
 
     [Fact]
