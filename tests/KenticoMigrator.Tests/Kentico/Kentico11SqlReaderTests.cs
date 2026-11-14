@@ -162,6 +162,123 @@ public sealed class Kentico11SqlReaderTests
         Assert.Empty(site.UnlinkedRows);
     }
 
+    private static readonly Guid HistoryOnlyAttachment = Guid.Parse("a77ac000-0000-4000-8000-000000000090");
+
+    [IntegrationFact]
+    public async Task Reads_current_attachments_only()
+    {
+        var site = await ReadSiteAsync();
+
+        Assert.Equal(7, site.Attachments.Count);
+        Assert.DoesNotContain(site.Attachments, a => a.AttachmentGuid == HistoryOnlyAttachment);
+
+        var documentsByNode = site.Documents.ToDictionary(d => d.NodeId);
+        string FieldOf(string path) => site.Attachments.Single(a => documentsByNode[a.NodeId].AliasPath == path && a.FieldColumn is not null).FieldColumn!;
+
+        // Attachment group fields match AttachmentGroupGUID to the field guid; file fields match the stored guid.
+        Assert.All(site.Attachments.Where(a => documentsByNode[a.NodeId].ClassName == "DEMO.Product"), a => Assert.Equal("Images", a.FieldColumn));
+        Assert.Equal("ArticleTeaserImage", FieldOf("/Articles/Paddling-Basics"));
+        Assert.Equal("FileAttachment", FieldOf("/Downloads/Paddle-Size-Guide"));
+
+        var unsorted = Assert.Single(site.Attachments, a => a.IsUnsorted);
+        Assert.Null(unsorted.FieldColumn);
+        Assert.Equal("/About", documentsByNode[unsorted.NodeId].AliasPath);
+
+        var teaser = site.Attachments.Single(a => a.FieldColumn == "ArticleTeaserImage");
+        Assert.Equal("paddling-teaser.jpg", teaser.FileName);
+        Assert.Equal("jpg", teaser.Extension);
+        Assert.Equal("image/jpeg", teaser.MimeType);
+        Assert.Equal(96, teaser.Width);
+        Assert.Equal(64, teaser.Height);
+        Assert.Equal("Paddling teaser", teaser.Title);
+        Assert.True(teaser.Size > 0);
+    }
+
+    [IntegrationFact]
+    public async Task Group_attachments_are_ordered()
+    {
+        var site = await ReadSiteAsync();
+        var river = site.Documents.Single(d => d.AliasPath == "/Catalog/Products/River-Runner-Kayak");
+
+        var gallery = site.Attachments.Where(a => a.NodeId == river.NodeId && a.FieldColumn == "Images").ToList();
+
+        // Inserted as front (order 2) then side (order 1); the reader returns them in attachment order.
+        Assert.Equal(["river-side.jpg", "river-front.jpg"], gallery.Select(a => a.FileName));
+        Assert.Equal([1, 2], gallery.Select(a => a.Order));
+    }
+
+    [IntegrationFact]
+    public async Task Reads_media_library_files()
+    {
+        var site = await ReadSiteAsync();
+
+        Assert.Equal(4, site.MediaFiles.Count);
+        Assert.All(site.MediaFiles, f => Assert.Equal("Gallery", f.LibraryName));
+
+        var nested = site.MediaFiles.Single(f => f.FilePath == "boats/kayak-blue.jpg");
+        Assert.Equal("Gallery", nested.LibraryFolder);
+        Assert.Equal("kayak-blue.jpg", nested.FileName);
+        Assert.Equal("jpg", nested.Extension);
+        Assert.Equal("image/jpeg", nested.MimeType);
+        Assert.Equal(Guid.Parse("f11e0000-0000-4000-8000-000000000002"), nested.FileGuid);
+        Assert.Equal(2, site.MediaFiles.Count(f => f.FilePath.StartsWith("boats/", StringComparison.Ordinal)));
+    }
+
+    [IntegrationFact]
+    public async Task Open_media_file_streams_the_file_and_missing_file_throws_file_not_found()
+    {
+        var reader = CreateReader();
+        var site = await reader.ReadAsync([], CancellationToken.None);
+
+        var dock = site.MediaFiles.Single(f => f.FilePath == "dock.jpg");
+        await using (var stream = await reader.OpenMediaFileAsync(dock, CancellationToken.None))
+        {
+            Assert.Equal(dock.Size, stream.Length);
+            Assert.Equal(0xFF, stream.ReadByte()); // JPEG start of image
+            Assert.Equal(0xD8, stream.ReadByte());
+        }
+
+        var missing = site.MediaFiles.Single(f => f.FilePath == "missing.jpg");
+        await Assert.ThrowsAsync<FileNotFoundException>(() => reader.OpenMediaFileAsync(missing, CancellationToken.None));
+    }
+
+    [IntegrationFact]
+    public async Task Open_media_file_does_not_leave_the_media_root()
+    {
+        var reader = CreateReader();
+        var site = await reader.ReadAsync([], CancellationToken.None);
+        var escaping = site.MediaFiles[0] with { FilePath = "../../kentico11-sample.sql" };
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => reader.OpenMediaFileAsync(escaping, CancellationToken.None));
+    }
+
+    [IntegrationFact]
+    public async Task Open_attachment_streams_the_binary_of_the_current_version()
+    {
+        var reader = CreateReader();
+        var site = await reader.ReadAsync([], CancellationToken.None);
+        var teaser = site.Attachments.Single(a => a.FieldColumn == "ArticleTeaserImage");
+
+        await using var stream = await reader.OpenAttachmentAsync(teaser.AttachmentGuid, CancellationToken.None);
+
+        Assert.Equal(teaser.Size, stream.Length);
+        Assert.Equal(0xFF, stream.ReadByte());
+        Assert.Equal(0xD8, stream.ReadByte());
+
+        // Versions in the history table are not served.
+        await Assert.ThrowsAsync<FileNotFoundException>(() => reader.OpenAttachmentAsync(HistoryOnlyAttachment, CancellationToken.None));
+    }
+
+    [IntegrationFact]
+    public async Task Counts_include_attachments_and_media_files()
+    {
+        var counts = await CreateReader().CountAsync(CancellationToken.None);
+
+        Assert.Equal(7, counts.Attachments);
+        Assert.Equal(4, counts.MediaFiles);
+        Assert.Equal(0, counts.Aliases);
+    }
+
     [IntegrationFact]
     public async Task Rejects_non_11_version()
     {

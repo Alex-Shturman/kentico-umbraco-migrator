@@ -48,7 +48,7 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         var nodes = (await connection.QueryAsync<NodeRow>(new CommandDefinition(
             """
             SELECT n.NodeID, n.NodeGUID, n.NodeParentID, n.NodeClassID, n.NodeAlias, n.NodeAliasPath, n.NodeOrder, n.NodeSKUID,
-                   d.DocumentName, d.DocumentForeignKeyValue, d.DocumentPageTitle, d.DocumentPageDescription, d.DocumentPageKeyWords,
+                   d.DocumentID, d.DocumentName, d.DocumentForeignKeyValue, d.DocumentPageTitle, d.DocumentPageDescription, d.DocumentPageKeyWords,
                    d.DocumentMenuItemHideInNavigation, d.DocumentShowInSiteMap, d.DocumentCanBePublished, d.DocumentPublishFrom,
                    d.DocumentPublishTo, d.DocumentCreatedWhen, d.DocumentModifiedWhen, d.DocumentUrlPath, d.DocumentExtensions,
                    d.DocumentContent, d.DocumentPageTemplateID
@@ -68,16 +68,60 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
             .OrderBy(t => t.ClassName, StringComparer.Ordinal)
             .ToList();
 
-        return new SourceSite(site.SiteName, version, pageTypes, documents, [], [], [], unlinked);
+        var attachments = await ReadAttachmentsAsync(connection, nodes, documents, classes, ct);
+        var mediaFiles = await ReadMediaFilesAsync(connection, site.SiteId, ct);
+
+        return new SourceSite(site.SiteName, version, pageTypes, documents, attachments, [], mediaFiles, unlinked);
     }
 
     /// <inheritdoc />
-    public Task<Stream> OpenAttachmentAsync(Guid attachmentGuid, CancellationToken ct) =>
-        throw new NotSupportedException("Attachments are read in a later step.");
+    /// <remarks>The binary is buffered in memory: one attachment at a time, never the whole table.</remarks>
+    public async Task<Stream> OpenAttachmentAsync(Guid attachmentGuid, CancellationToken ct)
+    {
+        await using var connection = await OpenAsync(ct);
+        await using var command = new SqlCommand(
+            "SELECT AttachmentBinary FROM CMS_Attachment WHERE AttachmentGUID = @guid", connection);
+        command.Parameters.AddWithValue("@guid", attachmentGuid);
+
+        await using var reader = await command.ExecuteReaderAsync(System.Data.CommandBehavior.SequentialAccess, ct);
+        if (!await reader.ReadAsync(ct) || await reader.IsDBNullAsync(0, ct))
+        {
+            throw new FileNotFoundException($"Attachment {attachmentGuid} has no binary in the database.");
+        }
+
+        var buffer = new MemoryStream();
+        await using (var source = reader.GetStream(0))
+        {
+            await source.CopyToAsync(buffer, ct);
+        }
+
+        buffer.Position = 0;
+        return buffer;
+    }
 
     /// <inheritdoc />
-    public Task<Stream> OpenMediaFileAsync(SourceMediaFile file, CancellationToken ct) =>
-        throw new NotSupportedException("Media files are read in a later step.");
+    public Task<Stream> OpenMediaFileAsync(SourceMediaFile file, CancellationToken ct)
+    {
+        if (_mediaRoot is null)
+        {
+            throw new InvalidOperationException("Kentico:MediaRoot is not configured; media library files cannot be opened.");
+        }
+
+        // The library folder and path come from the database: keep them inside the media root.
+        var root = Path.GetFullPath(_mediaRoot);
+        var path = Path.GetFullPath(Path.Combine(root, file.LibraryFolder, file.FilePath));
+        if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"Media file path '{file.FilePath}' points outside the media root.");
+        }
+
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException($"Media file '{file.LibraryFolder}/{file.FilePath}' not found under the media root.", path);
+        }
+
+        return Task.FromResult<Stream>(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true));
+    }
 
     /// <inheritdoc />
     public async Task<SourceCounts> CountAsync(CancellationToken ct)
@@ -94,7 +138,12 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
             GROUP BY c.ClassName
             """, cancellationToken: ct));
 
-        return new SourceCounts(perClass.ToDictionary(r => r.ClassName, r => r.Count), 0, 0, 0);
+        var attachments = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM CMS_Attachment WHERE AttachmentDocumentID IS NOT NULL", cancellationToken: ct));
+        var mediaFiles = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT COUNT(*) FROM Media_File", cancellationToken: ct));
+
+        return new SourceCounts(perClass.ToDictionary(r => r.ClassName, r => r.Count), attachments, mediaFiles, 0);
     }
 
     private async Task<SqlConnection> OpenAsync(CancellationToken ct)
@@ -244,6 +293,84 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         return result;
     }
 
+    /// <summary>Current attachments of the site's documents, with the field each one belongs to.</summary>
+    private static async Task<IReadOnlyList<SourceAttachment>> ReadAttachmentsAsync(
+        SqlConnection connection,
+        List<NodeRow> nodes,
+        List<SourceDocument> documents,
+        Dictionary<int, ClassInfo> classes,
+        CancellationToken ct)
+    {
+        var rows = await connection.QueryAsync<AttachmentRow>(new CommandDefinition(
+            """
+            SELECT AttachmentGUID, AttachmentDocumentID, AttachmentName, AttachmentExtension, AttachmentMimeType, AttachmentSize,
+                   AttachmentImageWidth, AttachmentImageHeight, AttachmentTitle, AttachmentIsUnsorted, AttachmentOrder, AttachmentGroupGUID
+            FROM CMS_Attachment
+            WHERE AttachmentDocumentID IS NOT NULL
+            """, cancellationToken: ct));
+
+        var ownerByDocument = nodes.Select((n, i) => (Node: n, Document: documents[i])).ToDictionary(x => x.Node.DocumentID);
+        var result = new List<SourceAttachment>();
+        foreach (var row in rows)
+        {
+            // Attachments of documents that are not read (linked nodes, other sites) are skipped.
+            if (!ownerByDocument.TryGetValue(row.AttachmentDocumentID, out var owner))
+            {
+                continue;
+            }
+
+            // Group fields match AttachmentGroupGUID to the field guid; file fields hold the attachment guid.
+            var fields = classes[owner.Node.NodeClassID].Fields;
+            var column = row.AttachmentGroupGUID is { } group
+                ? fields.FirstOrDefault(f => f.DataType == "docattachments" && f.FieldGuid == group)?.Column
+                : fields.FirstOrDefault(f => f.DataType == "file"
+                    && owner.Document.Fields.TryGetValue(f.Column, out var value) && value is Guid g && g == row.AttachmentGUID)?.Column;
+
+            result.Add(new SourceAttachment(
+                row.AttachmentGUID,
+                owner.Node.NodeID,
+                row.AttachmentName,
+                NormalizeExtension(row.AttachmentExtension),
+                row.AttachmentMimeType,
+                row.AttachmentSize,
+                row.AttachmentImageWidth,
+                row.AttachmentImageHeight,
+                string.IsNullOrWhiteSpace(row.AttachmentTitle) ? null : row.AttachmentTitle,
+                column,
+                row.AttachmentIsUnsorted ?? false,
+                row.AttachmentOrder ?? 0));
+        }
+
+        return result.OrderBy(a => a.NodeId).ThenBy(a => a.Order).ThenBy(a => a.FileName, StringComparer.Ordinal).ToList();
+    }
+
+    private static async Task<IReadOnlyList<SourceMediaFile>> ReadMediaFilesAsync(SqlConnection connection, int siteId, CancellationToken ct)
+    {
+        var rows = await connection.QueryAsync<MediaFileRow>(new CommandDefinition(
+            """
+            SELECT f.FileGUID, l.LibraryName, l.LibraryFolder, f.FilePath, f.FileName, f.FileExtension, f.FileMimeType, f.FileSize, f.FileTitle
+            FROM Media_File f
+            JOIN Media_Library l ON l.LibraryID = f.FileLibraryID
+            WHERE l.LibrarySiteID = @siteId
+            ORDER BY l.LibraryName, f.FilePath
+            """, new { siteId }, cancellationToken: ct));
+
+        // Kentico stores the file name without its extension; the reader returns the name as it is on disk.
+        return rows.Select(r => new SourceMediaFile(
+            r.FileGUID,
+            r.LibraryName,
+            r.LibraryFolder,
+            r.FilePath.Replace('\\', '/'),
+            r.FileName + r.FileExtension,
+            NormalizeExtension(r.FileExtension),
+            r.FileMimeType,
+            r.FileSize,
+            string.IsNullOrWhiteSpace(r.FileTitle) ? null : r.FileTitle)).ToList();
+    }
+
+    /// <summary>Extensions are returned lower case without the leading dot.</summary>
+    private static string NormalizeExtension(string extension) => extension.TrimStart('.').ToLowerInvariant();
+
     private SourceDocument ToDocument(
         NodeRow node,
         Dictionary<int, ClassInfo> classes,
@@ -325,6 +452,31 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         string ClassFormDefinition,
         bool IsUsedByNodes);
 
+    private sealed record AttachmentRow(
+        Guid AttachmentGUID,
+        int AttachmentDocumentID,
+        string AttachmentName,
+        string AttachmentExtension,
+        string AttachmentMimeType,
+        int AttachmentSize,
+        int? AttachmentImageWidth,
+        int? AttachmentImageHeight,
+        string? AttachmentTitle,
+        bool? AttachmentIsUnsorted,
+        int? AttachmentOrder,
+        Guid? AttachmentGroupGUID);
+
+    private sealed record MediaFileRow(
+        Guid FileGUID,
+        string LibraryName,
+        string LibraryFolder,
+        string FilePath,
+        string FileName,
+        string FileExtension,
+        string FileMimeType,
+        long FileSize,
+        string? FileTitle);
+
     private sealed record NodeRow(
         int NodeID,
         Guid NodeGUID,
@@ -334,6 +486,7 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         string NodeAliasPath,
         int? NodeOrder,
         int? NodeSKUID,
+        int DocumentID,
         string DocumentName,
         int? DocumentForeignKeyValue,
         string? DocumentPageTitle,
