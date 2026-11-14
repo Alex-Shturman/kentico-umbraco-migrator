@@ -120,13 +120,28 @@ internal static class PlannedShape
         }
     }
 
-    // An Integer property never rounds: a fractional source value is a mapping error, reported without the value (FR-028).
+    // An Integer property never rounds and never leaves the Int32 range of Umbraco's Integer editor. Either problem is a
+    // mapping error, reported with the property alias and without the value (FR-028).
     private static long WholeNumber(string alias, object raw)
     {
-        var number = System.Convert.ToDecimal(raw, CultureInfo.InvariantCulture);
+        decimal number;
+        try
+        {
+            number = System.Convert.ToDecimal(raw, CultureInfo.InvariantCulture);
+        }
+        catch (OverflowException)
+        {
+            throw new InvalidDataException($"Property '{alias}' is mapped to an integer editor but the source value is out of range.");
+        }
+
         if (number != decimal.Truncate(number))
         {
             throw new InvalidDataException($"Property '{alias}' is mapped to an integer editor but the source value is not a whole number.");
+        }
+
+        if (number is < int.MinValue or > int.MaxValue)
+        {
+            throw new InvalidDataException($"Property '{alias}' is mapped to an integer editor but the source value is out of range.");
         }
 
         return (long)number;

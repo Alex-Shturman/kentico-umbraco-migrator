@@ -253,4 +253,34 @@ public sealed class FingerprintPlannedTests
         Assert.DoesNotContain("1.5", ex.Message);
         Assert.Equal(2L, (long)OwnedValues.FromPlanned(whole).Values["count"]!);
     }
+
+    [Theory]
+    [InlineData(2147483648L)]
+    [InlineData(-2147483649L)]
+    [InlineData(long.MaxValue)]
+    [InlineData(1e30)]
+    public void Integer_outside_the_int32_range_is_refused_naming_the_property_not_the_value(object value)
+    {
+        var doc = Document(new Dictionary<string, PlannedValue> { ["count"] = new("Integer", value) });
+
+        var ex = Assert.Throws<InvalidDataException>(() => OwnedValues.FromPlanned(doc));
+
+        Assert.Contains("count", ex.Message);
+        Assert.DoesNotContain("2147483648", ex.Message);
+    }
+
+    [Fact]
+    public void Integer_at_the_int32_limits_is_written()
+    {
+        var doc = Document(new Dictionary<string, PlannedValue>
+        {
+            ["max"] = new("Integer", int.MaxValue),
+            ["min"] = new("Integer", int.MinValue),
+        });
+
+        var values = OwnedValues.FromPlanned(doc).Values;
+
+        Assert.Equal((long)int.MaxValue, (long)values["max"]!);
+        Assert.Equal((long)int.MinValue, (long)values["min"]!);
+    }
 }
