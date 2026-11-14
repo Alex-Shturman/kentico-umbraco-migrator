@@ -24,16 +24,20 @@ public sealed class MediaEndToEndTests
         Assert.True(run.ExitCode == ExitCodes.Success, run.Output);
 
         var files = await FilesAsync(host);
+        var blobs = await AzuriteBlobNamesAsync();
 
         var expected = EndToEndHost.Items(run).Count(i => i.Kind == ItemKinds.Media && i.Type != "Folder");
         Assert.True(expected > 0);
         Assert.Equal(expected, files.Count);
         foreach (var file in files)
         {
-            // The host keeps media only in the blob container (Azurite), so a 200 from the media URL proves the blob is there.
             var urls = await host.Api.GetAsync($"/media/urls?id={file.Key:D}", Ct);
             var url = urls!.AsArray().Single()!["urlInfos"]!.AsArray().Single()!["url"]!.GetValue<string>();
-            using var response = await host.Site.GetAsync(new Uri(url).PathAndQuery, Ct);
+            var path = new Uri(url).AbsolutePath;
+
+            // The media URL is the host's; the file itself must be the blob "media/<token>/<file name>" in the Azurite container.
+            Assert.Contains(path.TrimStart('/'), blobs);
+            using var response = await host.Site.GetAsync(path, Ct);
             Assert.True(response.IsSuccessStatusCode, $"{file.Name}: {(int)response.StatusCode}");
             Assert.True((await response.Content.ReadAsByteArrayAsync(Ct)).Length > 0, file.Name);
         }
@@ -69,6 +73,31 @@ public sealed class MediaEndToEndTests
         Assert.NotEmpty(media);
         Assert.All(media, i => Assert.Equal("Unchanged", i.Outcome));
         Assert.Equal(before.Select(f => f.Key).Order(), (await FilesAsync(host)).Select(f => f.Key).Order());
+    }
+
+    // The well-known Azurite development account (documented by Microsoft, not a secret). Anonymous container listing is
+    // refused, so the list request is signed with the shared key.
+    private const string AzuriteAccount = "devstoreaccount1";
+    private const string AzuriteKey = "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==";
+    private const string AzuriteVersion = "2021-08-06";
+
+    private static async Task<HashSet<string>> AzuriteBlobNamesAsync()
+    {
+        var date = DateTime.UtcNow.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        // GET, then the eleven standard headers (all empty), the x-ms headers, and the resource (the emulator repeats the account).
+        var toSign = $"GET\n\n\n\n\n\n\n\n\n\n\n\nx-ms-date:{date}\nx-ms-version:{AzuriteVersion}\n/{AzuriteAccount}/{AzuriteAccount}/media\ncomp:list\nrestype:container";
+        using var hmac = new System.Security.Cryptography.HMACSHA256(Convert.FromBase64String(AzuriteKey));
+        var signature = Convert.ToBase64String(hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(toSign)));
+
+        using var http = new HttpClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:10000/{AzuriteAccount}/media?restype=container&comp=list");
+        request.Headers.Add("x-ms-date", date);
+        request.Headers.Add("x-ms-version", AzuriteVersion);
+        request.Headers.TryAddWithoutValidation("Authorization", $"SharedKey {AzuriteAccount}:{signature}");
+        using var response = await http.SendAsync(request, Ct);
+        var xml = await response.Content.ReadAsStringAsync(Ct);
+        Assert.True(response.IsSuccessStatusCode, $"Azurite container listing: {(int)response.StatusCode}");
+        return [.. System.Xml.Linq.XDocument.Parse(xml).Descendants("Name").Select(n => n.Value)];
     }
 
     private static async Task<List<TreeNode>> FilesAsync(EndToEndHost host)
