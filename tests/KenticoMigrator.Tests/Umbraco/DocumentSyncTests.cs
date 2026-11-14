@@ -179,4 +179,138 @@ public sealed class DocumentSyncTests
 
         Assert.Equal([GuidFor(3), GuidFor(2), editorPage], api.ChildrenOf(GuidFor(1)));
     }
+
+    private static void EditTitle(FakeUmbracoApi api, Guid key, string title)
+    {
+        var values = api.Stored("document", key)!["values"]!.AsArray();
+        values.Single(v => v!["alias"]!.GetValue<string>() == "title")!["value"] = title;
+    }
+
+    [Fact]
+    public async Task Edited_item_is_skipped()
+    {
+        var api = new FakeUmbracoApi();
+        var sync = NewSync(api);
+        var docs = new[] { Doc(1, null, "Root", publish: true, title: "One") };
+        await sync.SyncAsync(docs, Options, Ct);
+        EditTitle(api, GuidFor(1), "Edited by an editor");
+        api.Calls.Clear();
+
+        // The plan also changed; the editor's change still wins.
+        var results = await sync.SyncAsync([Doc(1, null, "Root", publish: true, title: "Two")], Options, Ct);
+
+        Assert.Equal(ItemOutcome.EditedSkipped, results.Single().Outcome);
+        Assert.Empty(api.Writes);
+        Assert.Equal("Edited by an editor", api.Stored("document", GuidFor(1))!["values"]!.AsArray()
+            .Single(v => v!["alias"]!.GetValue<string>() == "title")!["value"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Renamed_item_counts_as_edited()
+    {
+        var api = new FakeUmbracoApi();
+        var sync = NewSync(api);
+        await sync.SyncAsync([Doc(1, null, "Root")], Options, Ct);
+        api.Stored("document", GuidFor(1))!["variants"]![0]!["name"] = "Renamed in the back office";
+
+        var results = await sync.SyncAsync([Doc(1, null, "Root")], Options, Ct);
+
+        Assert.Equal(ItemOutcome.EditedSkipped, results.Single().Outcome);
+    }
+
+    [Fact]
+    public async Task Item_without_a_stored_fingerprint_counts_as_edited()
+    {
+        var api = new FakeUmbracoApi();
+        api.Seed("document", GuidFor(1), new JsonObject
+        {
+            ["values"] = new JsonArray(),
+            ["variants"] = new JsonArray(new JsonObject { ["name"] = "Root" }),
+        });
+
+        var results = await NewSync(api).SyncAsync([Doc(1, null, "Root")], Options, Ct);
+
+        Assert.Equal(ItemOutcome.EditedSkipped, results.Single().Outcome);
+        Assert.Empty(api.Writes);
+    }
+
+    [Fact]
+    public async Task Moved_item_counts_as_edited_and_is_moved_back_when_overwriting()
+    {
+        var api = new FakeUmbracoApi();
+        var sync = NewSync(api);
+        var docs = new[] { Doc(1, null, "Root"), Doc(2, 1, "A"), Doc(3, 1, "B") };
+        await sync.SyncAsync(docs, Options, Ct);
+        await api.SendAsync(HttpMethod.Put, $"/document/{GuidFor(3):D}/move", new { target = new { id = GuidFor(2) } }, Ct);
+        api.Calls.Clear();
+
+        var skipped = await NewSync(api).SyncAsync(docs, Options, Ct);
+        Assert.Equal(ItemOutcome.EditedSkipped, skipped.Single(r => r.Key == GuidFor(3)).Outcome);
+        Assert.Empty(api.Writes);
+
+        var overwritten = await NewSync(api).SyncAsync(docs, new SyncOptions(OverwriteEdited: true), Ct);
+        Assert.Equal(ItemOutcome.EditedOverwritten, overwritten.Single(r => r.Key == GuidFor(3)).Outcome);
+        Assert.Equal([GuidFor(2), GuidFor(3)], api.ChildrenOf(GuidFor(1)));
+        Assert.Contains(api.Writes, c => c.Path == $"/document/{GuidFor(3):D}/move");
+    }
+
+    [Fact]
+    public async Task Edited_item_is_overwritten_with_option()
+    {
+        var api = new FakeUmbracoApi();
+        var sync = NewSync(api);
+        var docs = new[] { Doc(1, null, "Root", publish: true, title: "One") };
+        await sync.SyncAsync(docs, Options, Ct);
+        EditTitle(api, GuidFor(1), "Edited by an editor");
+        api.Calls.Clear();
+
+        var results = await sync.SyncAsync(docs, new SyncOptions(OverwriteEdited: true), Ct);
+
+        Assert.Equal(ItemOutcome.EditedOverwritten, results.Single().Outcome);
+        Assert.Equal("One", api.Stored("document", GuidFor(1))!["values"]!.AsArray()
+            .Single(v => v!["alias"]!.GetValue<string>() == "title")!["value"]!.GetValue<string>());
+        Assert.Equal([GuidFor(1)], api.PublishedKeys);
+
+        api.Calls.Clear();
+        var again = await sync.SyncAsync(docs, Options, Ct);
+        Assert.Equal(ItemOutcome.Unchanged, again.Single().Outcome);
+    }
+
+    [Fact]
+    public async Task Preview_makes_no_writes()
+    {
+        var api = new FakeUmbracoApi();
+        var sync = NewSync(api);
+        var docs = new[] { Doc(1, null, "Root", title: "One"), Doc(2, 1, "Child"), Doc(3, 1, "Other") };
+
+        var onEmpty = await sync.SyncAsync(docs, new SyncOptions(Preview: true), Ct);
+        Assert.All(onEmpty, r => Assert.Equal(ItemOutcome.WouldCreate, r.Outcome));
+        Assert.Empty(api.Writes);
+
+        await sync.SyncAsync(docs, Options, Ct);
+        EditTitle(api, GuidFor(3), "Edited");
+        api.Calls.Clear();
+        var changed = new[] { Doc(1, null, "Root", title: "Changed"), Doc(2, 1, "Child"), Doc(3, 1, "Other") };
+
+        var preview = await sync.SyncAsync(changed, new SyncOptions(Preview: true), Ct);
+
+        Assert.Equal([ItemOutcome.WouldUpdate, ItemOutcome.Unchanged, ItemOutcome.EditedSkipped], preview.Select(r => r.Outcome));
+        Assert.Empty(api.Writes);
+    }
+
+    [Fact]
+    public async Task Preview_with_overwrite_reports_would_update_for_an_edited_item()
+    {
+        var api = new FakeUmbracoApi();
+        var sync = NewSync(api);
+        var docs = new[] { Doc(1, null, "Root") };
+        await sync.SyncAsync(docs, Options, Ct);
+        EditTitle(api, GuidFor(1), "Edited");
+        api.Calls.Clear();
+
+        var preview = await sync.SyncAsync(docs, new SyncOptions(OverwriteEdited: true, Preview: true), Ct);
+
+        Assert.Equal(ItemOutcome.WouldUpdate, preview.Single().Outcome);
+        Assert.Empty(api.Writes);
+    }
 }

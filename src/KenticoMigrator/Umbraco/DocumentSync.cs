@@ -17,6 +17,9 @@ public sealed class DocumentSync
 {
     private static readonly Guid RootKey = Guid.Empty;
 
+    // Stands for a parent that is not the planned one; it never equals a planned parent key, so the fingerprint differs.
+    private static readonly Guid UnknownParent = new("ffffffff-ffff-ffff-ffff-ffffffffffff");
+
     private readonly IUmbracoApi _api;
     private readonly Dictionary<string, TargetDocumentType> _types;
     private readonly Dictionary<string, Guid> _templateKeys;
@@ -80,7 +83,38 @@ public sealed class DocumentSync
             return await PublishAsync(doc, ItemOutcome.Created, ct).ConfigureAwait(false);
         }
 
-        if (StoredFingerprint(current) == plannedFingerprint)
+        // R5: an item whose current owned values no longer hash to what the tool stored was changed by an editor.
+        var siblings = await ChildrenOfAsync(doc.ParentKey, ct).ConfigureAwait(false);
+        var moved = !siblings.Contains(doc.Key);
+        var storedFingerprint = StoredFingerprint(current);
+        var currentFingerprint = Fingerprint.Compute(Fingerprint.FromCurrent(
+            CurrentName(current),
+            moved ? UnknownParent : doc.ParentKey,
+            current["values"],
+            [.. owned.Values.Keys]));
+
+        if (storedFingerprint != currentFingerprint)
+        {
+            if (!options.OverwriteEdited)
+            {
+                return ItemOutcome.EditedSkipped;
+            }
+
+            if (options.Preview)
+            {
+                return ItemOutcome.WouldUpdate;
+            }
+
+            if (moved)
+            {
+                await MoveAsync(doc, siblings, ct).ConfigureAwait(false);
+            }
+
+            await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
+            return await PublishAsync(doc, ItemOutcome.EditedOverwritten, ct).ConfigureAwait(false);
+        }
+
+        if (storedFingerprint == plannedFingerprint)
         {
             return ItemOutcome.Unchanged;
         }
@@ -92,6 +126,19 @@ public sealed class DocumentSync
 
         await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
         return await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
+    }
+
+    // Puts a document that an editor moved back under its planned parent, at the end of that parent's children.
+    private async Task MoveAsync(TargetDocument doc, List<Guid> plannedSiblings, CancellationToken ct)
+    {
+        var body = new MoveRequest(doc.ParentKey is { } parent ? new IdRef(parent) : null);
+        await _api.SendAsync(HttpMethod.Put, $"{DocumentPath(doc.Key)}/move", body, ct).ConfigureAwait(false);
+        foreach (var children in _children.Values)
+        {
+            children.Remove(doc.Key);
+        }
+
+        plannedSiblings.Add(doc.Key);
     }
 
     private async Task CreateAsync(TargetDocument doc, OwnedValues owned, string fingerprint, CancellationToken ct)
@@ -139,10 +186,11 @@ public sealed class DocumentSync
         {
             try
             {
-                var wanted = group.Select((d, index) => (d, index)).OrderBy(x => x.d.SortOrder).ThenBy(x => x.index)
-                    .Select(x => x.d.Key).Where(present.Contains).ToList();
                 var parent = group.Key == RootKey ? (Guid?)null : group.Key;
                 var children = await ChildrenOfAsync(parent, ct).ConfigureAwait(false);
+                // Only documents that really sit under this parent: an item an editor moved elsewhere is left alone.
+                var wanted = group.Select((d, index) => (d, index)).OrderBy(x => x.d.SortOrder).ThenBy(x => x.index)
+                    .Select(x => x.d.Key).Where(key => present.Contains(key) && children.Contains(key)).ToList();
                 if (children.Where(wanted.Contains).SequenceEqual(wanted))
                 {
                     continue;
@@ -196,6 +244,9 @@ public sealed class DocumentSync
     private static string? StoredFingerprint(JsonNode document) =>
         document["values"]?.AsArray()
             .FirstOrDefault(v => v?["alias"]?.GetValue<string>() == PlanAliases.Fingerprint)?["value"]?.GetValue<string>();
+
+    private static string CurrentName(JsonNode document) =>
+        document["variants"]?.AsArray().FirstOrDefault()?["name"]?.GetValue<string>() ?? string.Empty;
 
     private IdRef? TemplateOf(TargetDocumentType type) =>
         type.TemplateAlias is { } alias && _templateKeys.TryGetValue(alias, out var key) ? new IdRef(key) : null;

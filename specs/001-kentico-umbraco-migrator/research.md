@@ -151,8 +151,12 @@ before the dependent code is considered done (Constitution IV).
   `Date Picker with time`, `Date Picker`, `Tags`, `Dropdown`, `Dropdown multiple`, `Media Picker`,
   `Multiple Media Picker`, `Image Media Picker`, `Upload File`, `Content Picker`, `Multi URL Picker`.
   There is no Decimal data type.
-- **Verify in T033**: null values on POST and PUT (a planned empty value is written as `value: null` to clear a
-  property). Fallback if Umbraco rejects or ignores them: omit the property on POST and send `""` or `[]` on PUT.
+- **Verified in T033** (Umbraco 17.8.1, live host, sample run): `value: null` is accepted on `POST /document` (23 sample
+  pages created, several with empty properties) and on `PUT /document/{id}` (200). A PUT with `null` clears the property; it
+  reads back as `""` (an empty string, not null), so the fingerprint must and does treat `""`, `null` and a missing
+  property alike (a second run reports every page `Unchanged`). Note that a PUT replaces the whole value set: a property
+  left out of the body is cleared too, so the tool always sends every owned property. The fallback (omit on POST, `""` or
+  `[]` on PUT) is not needed.
 - Tool-created data types: `POST /data-type` with
   `{ id, name, editorAlias, editorUiAlias, values: [...], parent: null }`.
   - Decimal: `editorAlias "Umbraco.Decimal"`, `editorUiAlias "Umb.PropertyEditorUi.Decimal"`, `values: []`.
