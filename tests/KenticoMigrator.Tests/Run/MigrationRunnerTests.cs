@@ -262,7 +262,7 @@ public sealed class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
-    public async Task Media_pickers_are_left_empty_until_media_is_synced_so_a_rerun_changes_nothing()
+    public async Task Media_is_synced_before_pages_and_a_rerun_changes_nothing()
     {
         var site = SampleSite() with
         {
@@ -276,12 +276,41 @@ public sealed class MigrationRunnerTests : IDisposable
 
         await Runner(reader, api).RunAsync(Request(CliArguments.Migrate), Ct);
 
-        var posted = api.Stored("document", article.Key)!["values"]!.AsArray();
-        Assert.Null(posted.Single(v => v!["alias"]!.GetValue<string>() == "teaserImage")!["value"]);
+        var firstMedia = api.Writes.ToList().FindIndex(c => c.Path == "/media");
+        var firstDocument = api.Writes.ToList().FindIndex(c => c.Path == "/document");
+        Assert.InRange(firstMedia, 0, firstDocument - 1);
+        var picker = api.Stored("document", article.Key)!["values"]!.AsArray()
+            .Single(v => v!["alias"]!.GetValue<string>() == "teaserImage")!["value"]!.AsArray();
+        Assert.Equal(GuidFor(900).ToString("D"), picker.Single()!["mediaKey"]!.GetValue<string>());
 
         var second = await Runner(reader, api).RunAsync(Request(CliArguments.Migrate), Ct);
         Assert.Equal(ExitCodes.Success, second);
-        Assert.DoesNotContain(",Created,", File.ReadAllText(Path.Combine(_runDir, "items.csv")));
+        var items = File.ReadAllText(Path.Combine(_runDir, "items.csv"));
+        Assert.DoesNotContain(",Created,", items);
+        Assert.DoesNotContain(",Updated,", items);
+        Assert.Contains("media,", items);
+    }
+
+    [Fact]
+    public async Task A_picker_does_not_point_at_media_that_failed()
+    {
+        var site = SampleSite() with
+        {
+            Attachments = [Attachment(GuidFor(900), 11, "teaser.jpg", fieldColumn: "ArticleTeaserImage")],
+        };
+        var plan = PlanBuilder.Build(site, SampleProfile());
+        var article = plan.Documents.Single(d => d.OldPath == "/Articles/First-trip");
+        var api = NewApi();
+        var reader = new FakeKenticoReader(site);
+        reader.MissingFiles.Add(GuidFor(900));
+
+        var exit = await Runner(reader, api).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.ItemErrors, exit);
+        var picker = api.Stored("document", article.Key)!["values"]!.AsArray()
+            .Single(v => v!["alias"]!.GetValue<string>() == "teaserImage")!["value"];
+        Assert.Null(picker);
+        Assert.Contains("failed media: FileNotFoundException", _output.ToString());
     }
 
     [Fact]

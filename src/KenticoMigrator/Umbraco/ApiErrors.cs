@@ -34,12 +34,12 @@ public static class ApiErrors
 
     /// <summary>
     /// A failure that belongs to one item: an API refusal (not 401), a value that cannot be written, or an answer the tool
-    /// cannot read. A cancelled run, a rejected token and programming errors are not item failures and propagate.
+    /// cannot read, or a source file that cannot be opened. A cancelled run, a rejected token and programming errors are not item failures and propagate.
     /// </summary>
     public static bool IsItemFailure(Exception ex, CancellationToken ct) =>
         !ct.IsCancellationRequested
         && ex is UmbracoApiException { StatusCode: not HttpStatusCode.Unauthorized }
-            or MappingException or InvalidDataException or InvalidOperationException or FormatException or KeyNotFoundException or System.Text.Json.JsonException;
+            or MappingException or InvalidDataException or InvalidOperationException or IOException or FormatException or KeyNotFoundException or System.Text.Json.JsonException;
 
     private static string HttpText(HttpStatusCode status, string title) =>
         string.IsNullOrWhiteSpace(title) || title.StartsWith(UntitledPrefix, StringComparison.Ordinal)

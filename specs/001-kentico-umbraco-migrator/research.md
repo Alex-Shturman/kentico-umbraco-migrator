@@ -89,6 +89,24 @@ before the dependent code is considered done (Constitution IV).
 - **Alternatives**: Compare against Umbraco's update date (fragile: publishing and sorting also
   change it); always `PUT` (bumps versions every run).
 
+## R5-media. Media change detection without a stored fingerprint
+
+- **Decision**: Media items carry no `migrationSourceKey` and no `migrationFingerprint`. The built-in `Folder`, `Image` and
+  `File` media types are not changed (a composition on them would modify built-ins, and a tool-created media type would
+  change what editors see in the media section). The media item's key is the stable source identity, and the tool writes
+  exactly three things: name, folder and file. For each item: `GET /media/{key}`; 404 gives `POST` (`Created`); otherwise the
+  fingerprint of the current name and folder (`Fingerprint.Compute` over `OwnedValues.ForMedia`) is compared with the planned
+  one: equal is `Unchanged`, different is an edit (`EditedSkipped`, or `EditedOverwritten` with `--overwrite-edited`, which
+  moves the item back, re-uploads the file and sets the planned name). An item in the recycle bin is restored (`Created`).
+- **Consequences** (accepted): a rename in the source is reported as an edit and needs `--overwrite-edited`; the bytes of a file
+  are not compared, so a changed source file under the same key is not re-uploaded and an editor replacing the file is not
+  noticed; media that left the source cannot be listed under "missing in source" because there is no marker to find
+  (documents are). Nothing is ever deleted.
+- **Media URLs**: after the sync the tool reads `GET /media/urls?id=..` for every existing file and keeps the path part
+  (`/media/<token>/<file>`), so rich text does not depend on the host name. The token is stable while the item exists.
+- **Alternatives**: a fingerprint property added to the built-in types (modifies built-ins); a dedicated tool media type
+  (not wanted); always overwrite (re-uploads every file on every run).
+
 ## R5a. Unpublished source pages
 
 - **Decision**: A page is published in the plan only if `DocumentCanBePublished = 1` and the run

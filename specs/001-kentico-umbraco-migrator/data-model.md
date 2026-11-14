@@ -83,7 +83,7 @@ String values are constants, not enums (some contain spaces). `SkippedItem.Categ
 `ItemResult.Kind` uses `ItemKinds`: `DataType` = `dataType`, `DocumentType` = `documentType`,
 `Template` = `template`, `Media` = `media`, `Document` = `document`, `Redirect` = `redirect`.
 
-Hidden properties on every migrated document and media item (composition `migrationComposition`):
+Hidden properties on every migrated document (composition `migrationComposition`; media items carry none, see research R5-media):
 `migrationSourceKey` (Textstring, read-only label) and `migrationFingerprint` (Textstring,
 read-only label). The fingerprint is SHA-256 (hex) over canonical JSON of the owned values
 (research R5).

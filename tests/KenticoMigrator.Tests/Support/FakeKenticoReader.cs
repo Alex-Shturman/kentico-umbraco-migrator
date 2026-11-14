@@ -12,9 +12,23 @@ internal sealed class FakeKenticoReader(SourceSite site, params SourceCounts[] c
 
     public Task<SourceSite> ReadAsync(IReadOnlyCollection<string> unlinkedRowClasses, CancellationToken ct) => Task.FromResult(site);
 
-    public Task<Stream> OpenAttachmentAsync(Guid attachmentGuid, CancellationToken ct) => throw new NotSupportedException();
+    /// <summary>File guids whose file is gone from disk (the open throws like the real reader).</summary>
+    public HashSet<Guid> MissingFiles { get; } = [];
 
-    public Task<Stream> OpenMediaFileAsync(SourceMediaFile file, CancellationToken ct) => throw new NotSupportedException();
+    /// <summary>Guids of the files opened, in order.</summary>
+    public List<Guid> Opened { get; } = [];
+
+    public Task<Stream> OpenAttachmentAsync(Guid attachmentGuid, CancellationToken ct) => Open(attachmentGuid);
+
+    public Task<Stream> OpenMediaFileAsync(SourceMediaFile file, CancellationToken ct) => Open(file.FileGuid);
+
+    private Task<Stream> Open(Guid guid)
+    {
+        Opened.Add(guid);
+        return MissingFiles.Contains(guid)
+            ? throw new FileNotFoundException("gone")
+            : Task.FromResult<Stream>(new MemoryStream([1, 2, 3]));
+    }
 
     public Task<SourceCounts> CountAsync(CancellationToken ct)
     {

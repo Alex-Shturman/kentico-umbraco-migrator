@@ -28,6 +28,12 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
 
     public int RedirectTotal { get; set; }
 
+    /// <summary>Temporary files uploaded so far: id to file name.</summary>
+    public Dictionary<Guid, string> TemporaryFiles { get; } = [];
+
+    /// <summary>Actual URLs the document URL endpoint answers with; a document not listed has no URL.</summary>
+    public Dictionary<Guid, string> DocumentUrls { get; } = [];
+
     /// <summary>Built-in data types by name (served by the filter endpoint).</summary>
     public Dictionary<string, Guid> BuiltInDataTypes { get; } = new(StringComparer.Ordinal);
 
@@ -89,16 +95,64 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
             return Task.FromResult<JsonNode?>(new JsonObject { ["total"] = items.Count, ["items"] = items });
         }
 
+        if (route == "/item/media-type/search")
+        {
+            var wanted = query.GetValueOrDefault("query") ?? string.Empty;
+            var found = new JsonArray();
+            foreach (var name in new[] { "Folder", "Image", "File" }.Where(n => n.Contains(wanted, StringComparison.OrdinalIgnoreCase)))
+            {
+                found.Add(new JsonObject { ["id"] = MediaTypeKey(name).ToString("D"), ["name"] = name });
+            }
+
+            return Task.FromResult<JsonNode?>(new JsonObject { ["total"] = found.Count, ["items"] = found });
+        }
+
+        if (route == "/media/urls")
+        {
+            var answer = new JsonArray();
+            foreach (var id in MultiQuery(path, "id").Select(Guid.Parse))
+            {
+                var infos = new JsonArray();
+                var file = Stored("media", id)?["values"]?.AsArray()
+                    .FirstOrDefault(v => v?["alias"]?.GetValue<string>() == "umbracoFile")?["value"]?["temporaryFileId"]?.GetValue<string>();
+                if (file is not null && TemporaryFiles.TryGetValue(Guid.Parse(file), out var fileName))
+                {
+                    infos.Add(new JsonObject { ["culture"] = null, ["url"] = $"https://localhost:44317/media/{id.ToString("N")[..8]}/{fileName}" });
+                }
+
+                answer.Add(new JsonObject { ["id"] = id.ToString("D"), ["urlInfos"] = infos });
+            }
+
+            return Task.FromResult<JsonNode?>(answer);
+        }
+
+        if (route == "/document/urls")
+        {
+            var answer = new JsonArray();
+            foreach (var id in MultiQuery(path, "id").Select(Guid.Parse))
+            {
+                var infos = new JsonArray();
+                if (DocumentUrls.TryGetValue(id, out var url))
+                {
+                    infos.Add(new JsonObject { ["culture"] = "en-US", ["url"] = url, ["isExternal"] = false });
+                }
+
+                answer.Add(new JsonObject { ["id"] = id.ToString("D"), ["urlInfos"] = infos });
+            }
+
+            return Task.FromResult<JsonNode?>(answer);
+        }
+
         if (route == "/redirect-management")
         {
             return Task.FromResult<JsonNode?>(new JsonObject { ["total"] = RedirectTotal, ["items"] = new JsonArray() });
         }
 
-        if (route == "/tree/document/ancestors")
+        if (route is "/tree/document/ancestors" or "/tree/media/ancestors")
         {
             // Like the real endpoint: the path from the root down to the item itself; each entry names its parent.
             var descendant = Guid.Parse(query["descendantId"]);
-            if (Stored("document", descendant) is null || !_parents.TryGetValue(descendant, out var parentOfKey))
+            if (Stored(parts[1], descendant) is null || !_parents.TryGetValue(descendant, out var parentOfKey))
             {
                 return Task.FromResult<JsonNode?>(new JsonArray());
             }
@@ -142,7 +196,7 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
             var item = (JsonObject)node!;
             var id = Guid.Parse(item["id"]!.GetValue<string>());
             Items(parts[0])[id] = (JsonObject)item.DeepClone();
-            if (parts[0] == "document")
+            if (parts[0] is "document" or "media")
             {
                 _parents[id] = item["parent"]?["id"]?.GetValue<string>() is { } p ? Guid.Parse(p) : null;
                 _order[id] = _nextOrder++;
@@ -187,10 +241,10 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
             return Ok(HttpStatusCode.OK);
         }
 
-        if (method == HttpMethod.Put && parts is ["recycle-bin", "document", var trashedId, "restore"])
+        if (method == HttpMethod.Put && parts is ["recycle-bin", "document" or "media", var trashedId, "restore"])
         {
             var key = Guid.Parse(trashedId);
-            Stored("document", key)!["isTrashed"] = false;
+            Stored(parts[1], key)!["isTrashed"] = false;
             _parents[key] = node?["target"]?["id"]?.GetValue<string>() is { } t ? Guid.Parse(t) : null;
             _order[key] = _nextOrder++;
             return Ok(HttpStatusCode.OK);
@@ -206,6 +260,46 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
         }
 
         throw new InvalidOperationException($"Fake: unhandled {method} {path}");
+    }
+
+    /// <summary>Records the upload like the real endpoint: the file can then be used by a media POST.</summary>
+    public Task<ApiResponse> UploadTemporaryFileAsync(Guid id, string fileName, string mimeType, Stream content, CancellationToken ct)
+    {
+        using var copy = new MemoryStream();
+        content.CopyTo(copy);
+        var call = new Call(HttpMethod.Post, "/temporary-file", new JsonObject
+        {
+            ["id"] = id.ToString("D"),
+            ["fileName"] = fileName,
+            ["mimeType"] = mimeType,
+            ["length"] = copy.Length,
+        });
+        Calls.Add(call);
+        if (Failure?.Invoke(call) is { } failure)
+        {
+            throw failure;
+        }
+
+        TemporaryFiles[id] = fileName;
+        return Ok(HttpStatusCode.Created);
+    }
+
+    public static Guid MediaTypeKey(string name) => Guid.Parse(name switch
+    {
+        "Folder" => "f38bd2d7-65d0-48e6-95dc-87ce06ec2d3d",
+        "Image" => "cc07b313-0843-4aa8-bbda-871c8da728c8",
+        _ => "4c52d8ab-54e6-40cd-999c-7a5f24903e4d",
+    });
+
+    private static IEnumerable<string> MultiQuery(string path, string name)
+    {
+        var index = path.IndexOf('?', StringComparison.Ordinal);
+        return index < 0
+            ? []
+            : path[(index + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries)
+                .Select(pair => pair.Split('=', 2))
+                .Where(pair => pair[0] == name)
+                .Select(pair => Uri.UnescapeDataString(pair[1]));
     }
 
     private JsonObject TreePage(string kind, Guid? parent, Dictionary<string, string> query)
@@ -251,7 +345,7 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
 
         var query = path[(index + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries)
             .Select(pair => pair.Split('=', 2))
-            .ToDictionary(pair => pair[0], pair => Uri.UnescapeDataString(pair.Length > 1 ? pair[1] : string.Empty));
+            .GroupBy(pair => pair[0]).ToDictionary(g => g.Key, g => Uri.UnescapeDataString(g.First().Length > 1 ? g.First()[1] : string.Empty));
         return (path[..index], query);
     }
 

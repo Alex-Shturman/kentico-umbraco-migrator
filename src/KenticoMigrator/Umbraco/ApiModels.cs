@@ -89,3 +89,12 @@ internal sealed record SortRequest(IdRef? Parent, IReadOnlyList<SortItemRequest>
 internal sealed record MoveRequest(IdRef? Target);
 
 internal sealed record RestoreRequest(IdRef? Target);
+
+internal sealed record MediaCreateRequest(
+    Guid Id,
+    IdRef? Parent,
+    IdRef MediaType,
+    JsonArray Values,
+    IReadOnlyList<VariantRequest> Variants);
+
+internal sealed record MediaUpdateRequest(JsonArray Values, IReadOnlyList<VariantRequest> Variants);

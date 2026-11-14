@@ -14,7 +14,7 @@ public sealed record RunRequest(
     Func<SourceMediaFile, bool>? MediaFileExists = null);
 
 /// <summary>
-/// Runs the phases of one command in the order of FR-026 (read, plan, snapshot, schema, documents, missing in source,
+/// Runs the phases of one command in the order of FR-026 (read, plan, snapshot, schema, media, documents, missing in source,
 /// snapshot, count guard, source counts, report) and returns the process exit code (contracts/cli.md). The console gets one
 /// line per phase with counts and elapsed time; no field content is printed. <c>plan</c> runs the same path in preview mode.
 /// </summary>
@@ -125,6 +125,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
 
         // From here on something may have been written, so a failure ends the run with a report and exit code 1, not 2.
         var schemaResults = new List<ItemResult>();
+        var mediaResults = new List<ItemResult>();
         var documents = new List<ItemResult>();
         IReadOnlyList<MissingInSource> missing = [];
         TargetCounts? after = null;
@@ -139,10 +140,20 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
                 return (0, Summarize(schemaResults));
             }).ConfigureAwait(false);
 
+            var mediaSync = new MediaSync(api!);
+            await Timed(timings, Phases.Media, async () =>
+            {
+                await mediaSync.SyncAsync(plan.Media, reader, new SyncOptions(request.OverwriteEdited, preview), ct, mediaResults).ConfigureAwait(false);
+                return (0, Summarize(mediaResults));
+            }).ConfigureAwait(false);
+
+            // A picker must not point at a media item that could not be written: Umbraco would drop it on save and the next
+            // run would see an editor change.
+            var failedMedia = mediaResults.Where(r => r.Outcome == ItemOutcome.Failed).Select(r => r.Key).ToHashSet();
             await Timed(timings, Phases.Documents, async () =>
             {
                 await new DocumentSync(api!, plan.DocumentTypes, plan.Templates)
-                    .SyncAsync([.. plan.Documents.Select(WithoutMediaPickers)], new SyncOptions(request.OverwriteEdited, preview), ct, documents).ConfigureAwait(false);
+                    .SyncAsync([.. plan.Documents.Select(d => WithoutMedia(d, failedMedia))], new SyncOptions(request.OverwriteEdited, preview), ct, documents).ConfigureAwait(false);
                 var sorts = documents.Where(r => r.Kind == ItemKinds.Sort).ToList();
                 return (0, Summarize(documents.Where(r => r.Kind == ItemKinds.Document).ToList()) + (sorts.Count > 0 ? $"; sorts: {Summarize(sorts)}" : string.Empty));
             }).ConfigureAwait(false);
@@ -173,7 +184,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             extraIssues.Add(new PlanIssue(PlanSeverities.Error, "target", $"The run stopped early: {reason}"));
         }
 
-        var items = schemaResults.Concat(documents).ToList();
+        var items = schemaResults.Concat(mediaResults).Concat(documents).ToList();
 
         WriteSummaryLines(plan, items, missing, drops);
 
@@ -202,13 +213,23 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         return ExitCodes.Success;
     }
 
-    // Media is not synced yet. A picker would point at items that do not exist; Umbraco drops them on save and the next run
-    // would see an editor change. Until the media phase runs before this one, pickers are written empty. Remove this call
-    // when MediaSync is wired in.
-    private static TargetDocument WithoutMediaPickers(TargetDocument doc) =>
-        doc.Values.Values.Any(v => v.Editor is "MediaSingle" or "MediaMultiple")
-            ? doc with { Values = doc.Values.ToDictionary(v => v.Key, v => v.Value.Editor is "MediaSingle" or "MediaMultiple" ? v.Value with { Raw = null } : v.Value) }
-            : doc;
+    // Takes the media items that failed out of the picker values of a page.
+    private static TargetDocument WithoutMedia(TargetDocument doc, IReadOnlySet<Guid> failed)
+    {
+        if (failed.Count == 0 || !doc.Values.Values.Any(v => v.Editor is "MediaSingle" or "MediaMultiple"))
+        {
+            return doc;
+        }
+
+        PlannedValue Strip(PlannedValue value) => value switch
+        {
+            { Editor: "MediaSingle", Raw: Guid key } when failed.Contains(key) => value with { Raw = null },
+            { Editor: "MediaMultiple", Raw: IEnumerable<Guid> keys } => value with { Raw = keys.Where(k => !failed.Contains(k)).ToArray() },
+            _ => value,
+        };
+
+        return doc with { Values = doc.Values.ToDictionary(v => v.Key, v => Strip(v.Value)) };
+    }
 
     // Null when the target answers; otherwise the reason (never a secret: only status and title).
     private async Task<string?> ProbeAsync(CancellationToken ct)
@@ -282,6 +303,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
     private static string KindLabel(string kind) => kind switch
     {
         ItemKinds.Document => "documents",
+        ItemKinds.Media => "media",
         ItemKinds.Template => "templates",
         ItemKinds.DocumentType => "document types",
         ItemKinds.DataType => "data types",
