@@ -47,8 +47,16 @@ public sealed partial class PlanBuilder
         var ordered = _site.Documents
             .OrderBy(d => d.AliasPath, StringComparer.OrdinalIgnoreCase)
             .ThenBy(d => d.NodeId);
+        var seenNodeIds = new HashSet<int>();
+        var seenGuids = new HashSet<Guid>();
         foreach (var doc in ordered)
         {
+            if (!seenNodeIds.Add(doc.NodeId) || !seenGuids.Add(doc.NodeGuid))
+            {
+                Error(doc.AliasPath, "The source has more than one page with the same node id or node GUID; this one is ignored.");
+                continue;
+            }
+
             var node = Classify(doc);
             if (node is not null)
             {
@@ -214,7 +222,11 @@ public sealed partial class PlanBuilder
                 current = above;
             }
 
-            Warning(doc.AliasPath, $"Parent '{directParent.AliasPath}' is not migrated; the page is attached to {(home is null ? "the top level" : "the home page")}.");
+            // The Kentico root node itself is never content, so a page below it is simply top-level.
+            if (directParent.ParentNodeId is not null)
+            {
+                Warning(doc.AliasPath, $"Parent '{directParent.AliasPath}' is not migrated; the page is attached to {(home is null ? "the top level" : "the home page")}.");
+            }
         }
 
         return home is not null && home != node ? home : null;
@@ -272,7 +284,14 @@ public sealed partial class PlanBuilder
                     continue;
                 }
 
-                var order = Lookup(row.Values, "Order") is { } o ? Convert.ToInt32(o, CultureInfo.InvariantCulture) : 0;
+                _ = int.TryParse(Convert.ToString(Lookup(row.Values, "Order"), CultureInfo.InvariantCulture), NumberStyles.Integer, CultureInfo.InvariantCulture, out var order);
+                var urlName = Slug(name);
+                if (urlName.Length == 0)
+                {
+                    Error(oldPath, "The unlinked row name has no letters or digits to build a URL name from.");
+                    continue;
+                }
+
                 nodes.Add(new Node
                 {
                     Key = Keys.Derived("unlinked", $"{rule.KenticoClass}:{row.Id}"),
@@ -284,7 +303,7 @@ public sealed partial class PlanBuilder
                     Source = new ValueSource(name, null, row.Values, [], null),
                     Publish = rule.Publish,
                     SortOrder = order,
-                    UrlName = Slug(name),
+                    UrlName = urlName,
                     Parent = parent,
                 });
             }

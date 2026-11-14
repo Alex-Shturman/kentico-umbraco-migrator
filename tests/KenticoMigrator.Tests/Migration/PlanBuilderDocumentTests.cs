@@ -223,7 +223,7 @@ public sealed class PlanBuilderDocumentTests
         var site = Site(
         [
             Doc(1, null, "CMS.MenuItem", "/Home"),
-            Doc(2, null, "CMS.Folder", "/Misc"),
+            Doc(2, 1, "CMS.Folder", "/Misc"),
             Doc(3, 2, "CMS.MenuItem", "/Misc/Deep"),
         ], types: [.. SampleTypes(), Type("CMS.Folder")]);
 

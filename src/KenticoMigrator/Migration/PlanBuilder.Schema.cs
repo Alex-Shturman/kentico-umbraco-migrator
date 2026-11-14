@@ -192,7 +192,7 @@ public sealed partial class PlanBuilder
     /// </summary>
     private static List<TargetDocumentType> ApplyHierarchy(IReadOnlyList<TargetDocumentType> types, IReadOnlyList<TargetDocument> documents)
     {
-        var typeByKey = documents.ToDictionary(d => d.Key, d => d.TypeAlias);
+        var typeByKey = documents.GroupBy(d => d.Key).ToDictionary(g => g.Key, g => g.First().TypeAlias);
         var childAliases = documents
             .Where(d => d.ParentKey is not null)
             .GroupBy(d => typeByKey[d.ParentKey!.Value])
