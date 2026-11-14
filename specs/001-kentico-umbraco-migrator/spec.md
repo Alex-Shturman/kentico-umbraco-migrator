@@ -57,6 +57,10 @@ findings: [docs/DISCOVERY.md](../../docs/DISCOVERY.md). Binding mapping decision
 - Q: Does the preview command read Umbraco to show what would change? → A: Yes, read-only: it
   shows per type how many items would be created, updated, left unchanged or skipped as edited in
   Umbraco; without a reachable Umbraco it falls back to a plan-only report.
+- Q: Do media items get a stored fingerprint and a "missing in source" check like pages? → A: No
+  (2026-11-14). The built-in media types stay untouched, so a media item is compared by its name
+  and folder only; it is not listed as "missing in source". A page that is planned as published
+  but is not published in Umbraco is never published by a re-run; it is listed for review.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -306,10 +310,13 @@ to a migrated sample site.
   On a later run, if the item's current owned values no longer match that fingerprint (an editor
   changed it in Umbraco), the tool MUST NOT update it and MUST list it in the report as "edited
   in Umbraco, not updated", unless the run was started with the overwrite-edited option, in which
-  case it updates the item and lists it as "edited in Umbraco, overwritten".
+  case it updates the item and lists it as "edited in Umbraco, overwritten". Exception for media
+  items: the built-in media types carry no fingerprint, so the tool compares the item's name and
+  folder with the planned ones and treats any difference as an edit.
 - **FR-015b**: The tool MUST NOT delete or unpublish anything in Umbraco. Items it migrated in an
   earlier run that are no longer produced by the source MUST be left unchanged and listed in the
-  report as "missing in source, review manually".
+  report as "missing in source, review manually". Media items are not listed (they carry no
+  source marker).
 - **FR-016**: The tool MUST continue after an item-level failure and record it.
 - **FR-017**: The tool MUST renew its target access automatically when it expires.
 
