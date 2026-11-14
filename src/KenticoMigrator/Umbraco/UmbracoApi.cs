@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json.Nodes;
 
 namespace KenticoMigrator.Umbraco;
@@ -35,4 +36,13 @@ public static class ApiErrors
         InvalidDataException or NotSupportedException => ex.Message,
         _ => ex.GetType().Name,
     };
+
+    /// <summary>
+    /// A failure that belongs to one item: an API refusal (not 401), a value that cannot be written, or an answer the tool
+    /// cannot read. A cancelled run, a rejected token and programming errors are not item failures and propagate.
+    /// </summary>
+    public static bool IsItemFailure(Exception ex, CancellationToken ct) =>
+        !ct.IsCancellationRequested
+        && ex is UmbracoApiException { StatusCode: not HttpStatusCode.Unauthorized }
+            or InvalidDataException or InvalidOperationException or FormatException or KeyNotFoundException or System.Text.Json.JsonException;
 }

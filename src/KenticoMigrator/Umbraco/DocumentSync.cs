@@ -52,7 +52,7 @@ public sealed class DocumentSync
                     present.Add(doc.Key);
                 }
             }
-            catch (Exception ex) when (IsItemFailure(ex, ct))
+            catch (Exception ex) when (ApiErrors.IsItemFailure(ex, ct))
             {
                 results.Add(Result(doc, ItemOutcome.Failed, ApiErrors.Describe(ex)));
             }
@@ -130,6 +130,13 @@ public sealed class DocumentSync
 
         if (storedFingerprint == plannedFingerprint)
         {
+            // A page that should be published but never was (an earlier publish failed) is published now. A page an editor
+            // unpublished has a publish date and is left alone.
+            if (doc.Publish && NeverPublished(current))
+            {
+                return options.Preview ? ItemOutcome.WouldUpdate : await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
+            }
+
             return ItemOutcome.Unchanged;
         }
 
@@ -224,7 +231,7 @@ public sealed class DocumentSync
                 children.Clear();
                 children.AddRange(order);
             }
-            catch (Exception ex) when (IsItemFailure(ex, ct))
+            catch (Exception ex) when (ApiErrors.IsItemFailure(ex, ct))
             {
                 // The pages exist; only their order could not be set. Report it on the first document of the group.
                 var first = group.First();
@@ -267,6 +274,9 @@ public sealed class DocumentSync
         document["values"]?.AsArray()
             .FirstOrDefault(v => v?["alias"]?.GetValue<string>() == PlanAliases.Fingerprint)?["value"]?.GetValue<string>();
 
+    private static bool NeverPublished(JsonNode document) =>
+        document["variants"]?.AsArray().FirstOrDefault()?["publishDate"] is null;
+
     private static string CurrentName(JsonNode document) =>
         document["variants"]?.AsArray().FirstOrDefault()?["name"]?.GetValue<string>() ?? string.Empty;
 
@@ -279,8 +289,4 @@ public sealed class DocumentSync
 
     private static ItemResult Result(TargetDocument doc, ItemOutcome outcome, string? error = null) =>
         new(doc.Key, ItemKinds.Document, doc.TypeAlias, doc.OldPath, outcome, error);
-
-    private static bool IsItemFailure(Exception ex, CancellationToken ct) =>
-        !ct.IsCancellationRequested
-        && ex is UmbracoApiException { StatusCode: not HttpStatusCode.Unauthorized } or InvalidDataException;
 }

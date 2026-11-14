@@ -48,6 +48,9 @@ public sealed record CliArguments(
                 case "--overwrite-edited" when equals < 0:
                     overwrite = true;
                     break;
+                case "--overwrite-edited":
+                    error = "--overwrite-edited is a flag and takes no value.";
+                    return false;
                 case "--profile" or "--run-dir":
                     string? value;
                     if (equals > 0)

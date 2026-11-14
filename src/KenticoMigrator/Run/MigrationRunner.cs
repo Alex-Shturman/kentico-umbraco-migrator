@@ -123,44 +123,60 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             return (counts, Describe(counts));
         }).ConfigureAwait(false);
 
-        var schema = await Timed(timings, Phases.Schema, async () =>
-        {
-            var results = await new SchemaSync(api!).EnsureAsync(plan, preview, ct).ConfigureAwait(false);
-            return (results, Summarize(results));
-        }).ConfigureAwait(false);
-
-        var documents = await Timed(timings, Phases.Documents, async () =>
-        {
-            var results = await new DocumentSync(api!, plan.DocumentTypes, plan.Templates)
-                .SyncAsync([.. plan.Documents.Select(WithoutMediaPickers)], new SyncOptions(request.OverwriteEdited, preview), ct).ConfigureAwait(false);
-            return (results, Summarize(results));
-        }).ConfigureAwait(false);
-
-        var items = schema.Concat(documents).ToList();
+        // From here on something may have been written, so a failure ends the run with a report and exit code 1, not 2.
+        var items = new List<ItemResult>();
+        IReadOnlyList<ItemResult> documents = [];
+        IReadOnlyList<MissingInSource> missing = [];
         TargetCounts? after = null;
         IReadOnlyList<CountDrop> drops = [];
         SourceCounts? sourceAfter = null;
-        var missing = await Timed(timings, Phases.Verify, async () =>
+        var stopped = false;
+        try
         {
-            var found = await MissingInSourceFinder.FindAsync(plan, api!, ct).ConfigureAwait(false);
-            if (!preview)
+            var schema = await Timed(timings, Phases.Schema, async () =>
             {
-                after = await TargetCounter.CountAsync(counter, ct).ConfigureAwait(false);
-                drops = CountGuard.FindDrops(before, after);
-                sourceAfter = await reader.CountAsync(ct).ConfigureAwait(false);
-                if (!SameCounts(sourceBefore, sourceAfter))
-                {
-                    extraIssues.Add(new PlanIssue(PlanSeverities.Warning, "source", "The source counts changed while the run was reading and writing."));
-                }
-            }
+                var results = await new SchemaSync(api!).EnsureAsync(plan, preview, ct).ConfigureAwait(false);
+                return (results, Summarize(results));
+            }).ConfigureAwait(false);
+            items.AddRange(schema);
 
-            return (found, $"{found.Count} missing in source, {drops.Count} count drops");
-        }).ConfigureAwait(false);
+            documents = await Timed(timings, Phases.Documents, async () =>
+            {
+                var results = await new DocumentSync(api!, plan.DocumentTypes, plan.Templates)
+                    .SyncAsync([.. plan.Documents.Select(WithoutMediaPickers)], new SyncOptions(request.OverwriteEdited, preview), ct).ConfigureAwait(false);
+                return (results, Summarize(results));
+            }).ConfigureAwait(false);
+            items.AddRange(documents);
+
+            missing = await Timed(timings, Phases.Verify, async () =>
+            {
+                var found = await MissingInSourceFinder.FindAsync(plan, api!, ct).ConfigureAwait(false);
+                if (!preview)
+                {
+                    after = await TargetCounter.CountAsync(counter, ct).ConfigureAwait(false);
+                    drops = CountGuard.FindDrops(before, after);
+                    sourceAfter = await reader.CountAsync(ct).ConfigureAwait(false);
+                    if (!SameCounts(sourceBefore, sourceAfter))
+                    {
+                        extraIssues.Add(new PlanIssue(PlanSeverities.Warning, "source", "The source counts changed while the run was reading and writing."));
+                    }
+                }
+
+                return (found, $"{found.Count} missing in source, {drops.Count} count drops");
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is UmbracoApiException or UmbracoAuthException && !ct.IsCancellationRequested)
+        {
+            stopped = true;
+            var reason = ApiErrors.Describe(ex);
+            output.WriteLine($"run stopped: {reason}");
+            extraIssues.Add(new PlanIssue(PlanSeverities.Error, "target", $"The run stopped early: {reason}"));
+        }
 
         WriteSummaryLines(plan, documents, missing, drops);
 
         var exit = drops.Count > 0 ? ExitCodes.CountDrop
-            : items.Any(r => r.Outcome == ItemOutcome.Failed) ? ExitCodes.ItemErrors
+            : stopped || items.Any(r => r.Outcome == ItemOutcome.Failed) ? ExitCodes.ItemErrors
             : ExitCodes.Success;
         WriteFailures(items);
         Finish(exit, items, missing, before, after, drops, sourceAfter);

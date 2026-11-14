@@ -174,6 +174,8 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
 
         if (method == HttpMethod.Put && parts.Length == 3 && parts[2] == "publish")
         {
+            // Like the real read model: a published page carries a publish date.
+            Stored("document", Guid.Parse(parts[1]))!["variants"]![0]!["publishDate"] = "2026-01-01T00:00:00+00:00";
             return Ok(HttpStatusCode.OK);
         }
 

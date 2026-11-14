@@ -283,4 +283,22 @@ public sealed class MigrationRunnerTests : IDisposable
         Assert.Equal(ExitCodes.Success, second);
         Assert.DoesNotContain(",Created,", File.ReadAllText(Path.Combine(_runDir, "items.csv")));
     }
+
+    [Fact]
+    public async Task Failure_after_the_writes_still_writes_the_report_and_gives_exit_code_1()
+    {
+        var api = NewApi();
+        var redirectCalls = 0;
+        // The first redirect read is the snapshot before the run; the second one is the snapshot after the writes.
+        api.Failure = c => c.Path.StartsWith("/redirect-management", StringComparison.Ordinal) && ++redirectCalls == 2
+            ? FakeUmbracoApi.Problem(HttpStatusCode.BadGateway, "Bad gateway")
+            : null;
+
+        var exit = await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.ItemErrors, exit);
+        Assert.True(File.Exists(Path.Combine(_runDir, "report.json")));
+        Assert.Contains("Created", File.ReadAllText(Path.Combine(_runDir, "items.csv")));
+        Assert.Contains("stopped", File.ReadAllText(Path.Combine(_runDir, "report.md")), StringComparison.OrdinalIgnoreCase);
+    }
 }

@@ -53,9 +53,11 @@ try
         if (!string.IsNullOrWhiteSpace(config["Umbraco:ClientSecret"]))
         {
             var baseUrl = config["Umbraco:BaseUrl"] is { Length: > 0 } url ? url : DefaultBaseUrl;
-            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri) || baseUri.Scheme is not ("http" or "https"))
+            // The client secret travels in every token request: plain http is only acceptable for the local host.
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri)
+                || !(baseUri.Scheme == "https" || (baseUri.Scheme == "http" && ManagementApiClient.IsLoopbackHostOf(baseUrl, baseUri.Host))))
             {
-                Console.Error.WriteLine("Umbraco:BaseUrl must be an absolute http or https URL.");
+                Console.Error.WriteLine("Umbraco:BaseUrl must be an absolute https URL (http is accepted for localhost only).");
                 return ExitCodes.ConfigurationOrPlanError;
             }
 
@@ -85,6 +87,12 @@ catch (Exception ex) when (ex is InvalidDataException or NotSupportedException o
 {
     // Configuration, connection or version problem: nothing was written before this point (contracts/cli.md).
     Console.Error.WriteLine($"Error: {(ex is UmbracoApiException or UmbracoAuthException ? ApiErrors.Describe(ex) : ex.Message)}");
+    return ExitCodes.ConfigurationOrPlanError;
+}
+catch (Exception ex) when (ex is not OperationCanceledException)
+{
+    // A bug or an unreadable answer: report the type only (a message could carry field content) and keep the documented exit codes.
+    Console.Error.WriteLine($"Unexpected error ({ex.GetType().Name}); nothing is printed about its content.");
     return ExitCodes.ConfigurationOrPlanError;
 }
 catch (OperationCanceledException)

@@ -66,4 +66,10 @@ public sealed class CliArgumentsTests
     {
         Assert.Contains("--delete", Fail("migrate", "--profile", "p.json", "--delete"));
     }
+
+    [Fact]
+    public void Flag_with_a_value_is_refused_instead_of_ignored()
+    {
+        Assert.Contains("--overwrite-edited", Fail("migrate", "--profile", "p.json", "--overwrite-edited=true"));
+    }
 }

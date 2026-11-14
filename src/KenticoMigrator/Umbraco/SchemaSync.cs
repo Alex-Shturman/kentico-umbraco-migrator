@@ -62,7 +62,7 @@ public sealed class SchemaSync(IUmbracoApi api)
                 ids[type.Key] = type.Key;
                 results.Add(await EnsureDataTypeAsync(type, preview, ct).ConfigureAwait(false));
             }
-            catch (Exception ex) when (IsItemFailure(ex, ct))
+            catch (Exception ex) when (ApiErrors.IsItemFailure(ex, ct))
             {
                 results.Add(Result(type.Key, ItemKinds.DataType, type.EditorAlias, ItemOutcome.Failed, ApiErrors.Describe(ex)));
             }
@@ -139,7 +139,7 @@ public sealed class SchemaSync(IUmbracoApi api)
             {
                 results.Add(await EnsureTemplateAsync(template, preview, ct).ConfigureAwait(false));
             }
-            catch (Exception ex) when (IsItemFailure(ex, ct))
+            catch (Exception ex) when (ApiErrors.IsItemFailure(ex, ct))
             {
                 results.Add(Result(template.Key, ItemKinds.Template, template.Alias, ItemOutcome.Failed, ApiErrors.Describe(ex)));
             }
@@ -228,7 +228,7 @@ public sealed class SchemaSync(IUmbracoApi api)
                     pending.Add((type, full, false));
                 }
             }
-            catch (Exception ex) when (IsItemFailure(ex, ct))
+            catch (Exception ex) when (ApiErrors.IsItemFailure(ex, ct))
             {
                 results.Add(Result(type.Key, ItemKinds.DocumentType, type.Alias, ItemOutcome.Failed, ApiErrors.Describe(ex)));
             }
@@ -241,7 +241,7 @@ public sealed class SchemaSync(IUmbracoApi api)
                 await api.SendAsync(HttpMethod.Put, $"/document-type/{type.Key:D}", full, ct).ConfigureAwait(false);
                 results.Add(Result(type.Key, ItemKinds.DocumentType, type.Alias, created ? ItemOutcome.Created : ItemOutcome.Updated));
             }
-            catch (Exception ex) when (IsItemFailure(ex, ct))
+            catch (Exception ex) when (ApiErrors.IsItemFailure(ex, ct))
             {
                 results.Add(Result(type.Key, ItemKinds.DocumentType, type.Alias, ItemOutcome.Failed, ApiErrors.Describe(ex)));
             }
@@ -354,9 +354,4 @@ public sealed class SchemaSync(IUmbracoApi api)
 
     private static ItemResult Result(Guid key, string kind, string typeAlias, ItemOutcome outcome, string? error = null) =>
         new(key, kind, typeAlias, string.Empty, outcome, error);
-
-    // A failed API call, a refused value or a missing resource fails one item; a cancelled run and unexpected bugs propagate.
-    private static bool IsItemFailure(Exception ex, CancellationToken ct) =>
-        !ct.IsCancellationRequested
-        && ex is UmbracoApiException { StatusCode: not HttpStatusCode.Unauthorized } or InvalidDataException;
 }

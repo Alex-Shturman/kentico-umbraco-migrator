@@ -351,4 +351,45 @@ public sealed class DocumentSyncTests
         Assert.Equal(ItemOutcome.WouldCreate, results.Single().Outcome);
         Assert.Empty(api.Writes);
     }
+
+    [Fact]
+    public async Task Page_that_was_never_published_is_published_on_the_next_run()
+    {
+        var api = new FakeUmbracoApi
+        {
+            Failure = c => c.Path.EndsWith("/publish", StringComparison.Ordinal) ? FakeUmbracoApi.Problem(HttpStatusCode.BadRequest, "Cannot publish") : null,
+        };
+        var docs = new[] { Doc(1, null, "Live", publish: true) };
+        var first = await NewSync(api).SyncAsync(docs, Options, Ct);
+        Assert.Equal(ItemOutcome.Failed, first.Single().Outcome);
+        api.Failure = null;
+        api.Calls.Clear();
+
+        var second = await NewSync(api).SyncAsync(docs, Options, Ct);
+
+        Assert.Equal(ItemOutcome.Updated, second.Single().Outcome);
+        Assert.Equal([GuidFor(1)], api.PublishedKeys);
+        Assert.DoesNotContain(api.Writes, c => c.Method == HttpMethod.Put && c.Path == $"/document/{GuidFor(1):D}");
+
+        api.Calls.Clear();
+        var third = await NewSync(api).SyncAsync(docs, Options, Ct);
+        Assert.Equal(ItemOutcome.Unchanged, third.Single().Outcome);
+        Assert.Empty(api.Writes);
+    }
+
+    [Fact]
+    public async Task Unexpected_exception_in_one_item_does_not_abort_the_run()
+    {
+        var api = new FakeUmbracoApi
+        {
+            Failure = c => c.Method == HttpMethod.Post && c.Body?["variants"]?[0]?["name"]?.GetValue<string>() == "Odd"
+                ? new InvalidOperationException("secret value that must not be reported")
+                : null,
+        };
+
+        var results = await NewSync(api).SyncAsync([Doc(1, null, "Odd"), Doc(2, null, "Fine")], Options, Ct);
+
+        Assert.Equal([ItemOutcome.Failed, ItemOutcome.Created], results.Select(r => r.Outcome));
+        Assert.DoesNotContain("secret", results[0].Error);
+    }
 }
