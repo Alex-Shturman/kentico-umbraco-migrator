@@ -1,9 +1,9 @@
 services:
   azurite:
-    image: mcr.microsoft.com/azure-storage/azurite
+    image: mcr.microsoft.com/azure-storage/azurite:3.34.0
     command: azurite --blobHost 0.0.0.0 --skipApiVersionCheck
     ports:
-      - "10000:10000"
+      - "127.0.0.1:10000:10000"
 
   # Optional local SQL Server for machines without one: docker compose --profile sql up -d sqlserver
   sqlserver:
@@ -12,6 +12,9 @@ services:
     profiles: ["sql"]
     environment:
       ACCEPT_EULA: "Y"
+      # Empty default on purpose: "${VAR:?}" makes every compose command (even for azurite only,
+      # even with this profile off) fail when the variable is unset. SQL Server itself refuses to
+      # start without a password, so set MSSQL_SA_PASSWORD before using the sql profile.
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:-}
     ports:
-      - "14333:1433"
+      - "127.0.0.1:14333:1433"
