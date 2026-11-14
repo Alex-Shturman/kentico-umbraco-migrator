@@ -354,7 +354,7 @@ public sealed class SchemaSyncTests
         stored["cleanup"] = new JsonObject { ["preventCleanup"] = true };
         var body = stored["properties"]!.AsArray().Single(p => p!["alias"]!.GetValue<string>() == "bodyText")!;
         body["description"] = "Help text";
-        body["validation"] = new JsonObject { ["mandatory"] = true, ["mandatoryMessage"] = "Needed" };
+        body["validation"] = new JsonObject { ["mandatory"] = false, ["mandatoryMessage"] = "Needed", ["regEx"] = "^a+$", ["regExMessage"] = "Only a" };
         body["appearance"] = new JsonObject { ["labelOnTop"] = true };
         api.Calls.Clear();
 
@@ -370,25 +370,64 @@ public sealed class SchemaSyncTests
         Assert.True(stored["cleanup"]!["preventCleanup"]!.GetValue<bool>());
         var after = stored["properties"]!.AsArray().Single(p => p!["alias"]!.GetValue<string>() == "bodyText")!;
         Assert.Equal("Help text", after["description"]!.GetValue<string>());
-        Assert.True(after["validation"]!["mandatory"]!.GetValue<bool>());
         Assert.Equal("Needed", after["validation"]!["mandatoryMessage"]!.GetValue<string>());
+        Assert.Equal("^a+$", after["validation"]!["regEx"]!.GetValue<string>());
         Assert.True(after["appearance"]!["labelOnTop"]!.GetValue<bool>());
     }
 
     [Fact]
-    public async Task Editor_extras_keep_their_sort_order()
+    public async Task Editor_extras_go_after_the_planned_ones_in_their_own_order_without_ties()
     {
         var api = NewApi();
         var sync = new SchemaSync(api);
         await sync.EnsureAsync(Plan, preview: false, Ct);
         var article = Plan.DocumentTypes.Single(t => t.Alias == "article");
         AddEditorAdditions(api, article, Guid.NewGuid(), Guid.NewGuid());
-        api.Stored("document-type", article.Key)!["name"] = "Tampered";
+        var stored = api.Stored("document-type", article.Key)!;
+        stored["properties"]!.AsArray().Add(new JsonObject
+        {
+            ["id"] = Guid.NewGuid().ToString("D"), ["container"] = null, ["sortOrder"] = 50, ["alias"] = "editorEarlier", ["name"] = "Earlier",
+            ["dataType"] = new JsonObject { ["id"] = api.BuiltInDataTypes["Textstring"].ToString("D") },
+            ["validation"] = new JsonObject { ["mandatory"] = false }, ["appearance"] = new JsonObject { ["labelOnTop"] = false },
+        });
+        stored["name"] = "Tampered";
 
         await sync.EnsureAsync(Plan, preview: false, Ct);
 
-        var note = api.Stored("document-type", article.Key)!["properties"]!.AsArray().Single(p => p!["alias"]!.GetValue<string>() == "editorNote")!;
-        Assert.Equal(99, note["sortOrder"]!.GetValue<int>());
+        var properties = stored["properties"]!.AsArray();
+        var orders = properties.Select(p => p!["sortOrder"]!.GetValue<int>()).ToList();
+        Assert.Equal(orders.Count, orders.Distinct().Count());
+        var planned = article.Properties.Count;
+        Assert.All(properties.Where(p => article.Properties.All(a => a.Alias != p!["alias"]!.GetValue<string>())), p => Assert.True(p!["sortOrder"]!.GetValue<int>() >= planned));
+        // Relative order of the extras is kept: editorEarlier (50) came before editorNote (99).
+        Assert.True(Order(properties, "editorEarlier") < Order(properties, "editorNote"));
+        var allowed = stored["allowedDocumentTypes"]!.AsArray().Select(a => a!["sortOrder"]!.GetValue<int>()).ToList();
+        Assert.Equal(allowed.Count, allowed.Distinct().Count());
+    }
+
+    private static int Order(JsonArray properties, string alias) =>
+        properties.Single(p => p!["alias"]!.GetValue<string>() == alias)!["sortOrder"]!.GetValue<int>();
+
+    [Fact]
+    public async Task Mandatory_flag_stays_plan_owned_while_other_validation_settings_are_kept()
+    {
+        var api = NewApi();
+        var sync = new SchemaSync(api);
+        await sync.EnsureAsync(Plan, preview: false, Ct);
+        var article = Plan.DocumentTypes.Single(t => t.Alias == "article");
+        var stored = api.Stored("document-type", article.Key)!;
+        stored["properties"]!.AsArray().Single(p => p!["alias"]!.GetValue<string>() == "bodyText")!["validation"] =
+            new JsonObject { ["mandatory"] = true, ["mandatoryMessage"] = "Needed", ["regEx"] = "^a+$" };
+
+        var results = await sync.EnsureAsync(Plan, preview: false, Ct);
+
+        Assert.Equal(ItemOutcome.Updated, results.Single(r => r.Key == article.Key).Outcome);
+        var validation = stored["properties"]!.AsArray().Single(p => p!["alias"]!.GetValue<string>() == "bodyText")!["validation"]!;
+        Assert.False(validation["mandatory"]!.GetValue<bool>());
+        Assert.Equal("Needed", validation["mandatoryMessage"]!.GetValue<string>());
+        Assert.Equal("^a+$", validation["regEx"]!.GetValue<string>());
+        var again = await sync.EnsureAsync(Plan, preview: false, Ct);
+        Assert.All(again, r => Assert.Equal(ItemOutcome.Unchanged, r.Outcome));
     }
 
     [Fact]

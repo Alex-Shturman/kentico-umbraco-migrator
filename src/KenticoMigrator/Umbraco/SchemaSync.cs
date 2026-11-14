@@ -418,6 +418,7 @@ public sealed class SchemaSync(IUmbracoApi api)
                     ["name"] = p["name"]?.GetValue<string>(),
                     ["dataType"] = p["dataType"]?["id"]?.GetValue<string>()?.ToLowerInvariant(),
                     ["group"] = p["container"]?["id"]?.GetValue<string>() is { } cid && containerNames.TryGetValue(cid, out var group) ? group : null,
+                    ["mandatory"] = p["validation"]?["mandatory"]?.GetValue<bool>() ?? false,
                 })]),
         };
         return shape.ToJsonString();
@@ -472,35 +473,55 @@ public sealed class SchemaSync(IUmbracoApi api)
             if (existing?["id"]?.GetValue<string>() is { } propertyId)
             {
                 property["id"] = propertyId;
-                // The tool owns alias, name, data type and group; help text, validation and appearance stay as they are.
+                // The tool owns alias, name, data type, group and the mandatory flag; help text, the other validation settings
+                // (patterns, messages) and appearance stay as they are.
+                var plannedMandatory = property["validation"]?["mandatory"]?.GetValue<bool>() ?? false;
                 foreach (var field in PropertyLevelEditorFields.Where(existing.ContainsKey))
                 {
                     property[field] = existing[field]?.DeepClone();
+                }
+
+                if (property["validation"] is JsonObject validation)
+                {
+                    validation["mandatory"] = plannedMandatory;
                 }
             }
         }
 
         var plannedAliases = properties.Select(p => p?["alias"]?.GetValue<string>()).ToHashSet();
-        foreach (var extra in currentProperties.Where(p => !plannedAliases.Contains(p["alias"]?.GetValue<string>())))
+        // Editor-added properties go after the planned ones, in the order they had, with new numbers so no two tie.
+        var nextOrder = properties.Count;
+        foreach (var extra in currentProperties.Where(p => !plannedAliases.Contains(p["alias"]?.GetValue<string>())).OrderBy(p => p["sortOrder"]?.GetValue<int>() ?? 0))
         {
-            properties.Add(extra.DeepClone());
+            var clone = (JsonObject)extra.DeepClone();
+            clone["sortOrder"] = nextOrder++;
+            properties.Add(clone);
         }
 
-        AppendMissing(merged["allowedDocumentTypes"]!.AsArray(), current["allowedDocumentTypes"]?.AsArray(), a => a?["documentType"]?["id"]?.GetValue<string>());
-        AppendMissing(merged["compositions"]!.AsArray(), current["compositions"]?.AsArray(), c => c?["documentType"]?["id"]?.GetValue<string>());
-        AppendMissing(merged["allowedTemplates"]!.AsArray(), current["allowedTemplates"]?.AsArray(), t => t?["id"]?.GetValue<string>());
+        AppendMissing(merged["allowedDocumentTypes"]!.AsArray(), current["allowedDocumentTypes"]?.AsArray(), a => a?["documentType"]?["id"]?.GetValue<string>(), renumber: true);
+        AppendMissing(merged["compositions"]!.AsArray(), current["compositions"]?.AsArray(), c => c?["documentType"]?["id"]?.GetValue<string>(), renumber: false);
+        AppendMissing(merged["allowedTemplates"]!.AsArray(), current["allowedTemplates"]?.AsArray(), t => t?["id"]?.GetValue<string>(), renumber: false);
         return merged;
     }
 
-    // Items of the target that the plan does not name are added unchanged, with the sort order they have.
-    private static void AppendMissing(JsonArray target, JsonArray? source, Func<JsonNode?, string?> idOf)
+    // Items of the target that the plan does not name are added unchanged. Allowed child types are numbered after the planned ones,
+    // in the order they had, so no two share a sort order.
+    private static void AppendMissing(JsonArray target, JsonArray? source, Func<JsonNode?, string?> idOf, bool renumber)
     {
         var known = target.Select(idOf).Where(i => i is not null).Select(i => i!.ToLowerInvariant()).ToHashSet();
-        foreach (var item in source ?? [])
+        var ordered = renumber ? (source ?? []).OrderBy(i => i?["sortOrder"]?.GetValue<int>() ?? 0).ToList() : [.. source ?? []];
+        var next = target.Count;
+        foreach (var item in ordered)
         {
             if (idOf(item) is { } id && known.Add(id.ToLowerInvariant()))
             {
-                target.Add(item!.DeepClone());
+                var clone = item!.DeepClone();
+                if (renumber)
+                {
+                    clone["sortOrder"] = next++;
+                }
+
+                target.Add(clone);
             }
         }
     }
