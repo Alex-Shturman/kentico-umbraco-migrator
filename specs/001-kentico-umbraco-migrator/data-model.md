@@ -11,13 +11,13 @@ Produced only by `IKenticoReader`. Nothing outside `Kentico/` knows Kentico tabl
 | Record | Fields | Rules |
 |---|---|---|
 | `SourceSite` | `SiteName`, `KenticoVersion`, `PageTypes`, `Documents`, `Attachments`, `Aliases`, `MediaFiles`, `UnlinkedRows: IReadOnlyDictionary<string, IReadOnlyList<SourceRow>>` | One site, one culture (reader throws otherwise) |
-| `SourcePageType` | `ClassName`, `TableName?`, `IsCoupled`, `Fields: IReadOnlyList<SourceField>` | Only page types used by documents or listed in the profile |
-| `SourceField` | `Column`, `DataType` (`text`, `longtext`, `integer`, `decimal`, `double`, `boolean`, `datetime`, `file`, `docattachments`, `guid`), `Size?`, `Control?`, `Options: IReadOnlyList<string>`, `FieldGuid` | `Options` parsed from the form definition for dropdown/radio controls |
-| `SourceDocument` | `NodeGuid`, `NodeId`, `ParentNodeId?`, `ClassName`, `Name`, `NodeAlias`, `AliasPath`, `Order`, `IsPublished`, `PublishFrom?`, `PublishTo?`, `HideInNavigation`, `ShowInSitemap`, `PageTitle?`, `PageDescription?`, `PageKeywords?`, `Created`, `Modified`, `UrlPath?`, `Extension?`, `Fields: IReadOnlyDictionary<string, object?>`, `Regions: IReadOnlyList<EditableRegion>`, `Sku: IReadOnlyDictionary<string, object?>?` | `IsPublished` per research R5a; `Fields` keyed by column name of the coupled table; `Regions` in template order |
+| `SourcePageType` | `ClassName`, `Fields: IReadOnlyList<SourceField>` | Only page types used by documents or listed in the profile |
+| `SourceField` | `Column`, `DataType` (`text`, `longtext`, `integer`, `decimal`, `double`, `boolean`, `datetime`, `file`, `docattachments`, `guid`), `Size?`, `Options: IReadOnlyList<string>`, `FieldGuid` | `Options` parsed from the form definition for dropdown/radio controls |
+| `SourceDocument` | `NodeGuid`, `NodeId`, `ParentNodeId?`, `ClassName`, `Name`, `NodeAlias`, `AliasPath`, `Order`, `IsPublished`, `PublishFrom?`, `PublishTo?`, `HideInNavigation`, `ShowInSitemap`, `PageTitle?`, `PageDescription?`, `PageKeywords?`, `Created`, `Modified`, `UrlPath?`, `Extension?`, `Fields: IReadOnlyDictionary<string, object?>`, `Regions: IReadOnlyList<EditableRegion>`, `Sku: IReadOnlyDictionary<string, object?>?`, `LinkedNodeId?` | `IsPublished` per research R5a; `Fields` keyed by column name of the coupled table; `Regions` in template order; `LinkedNodeId` is `NodeLinkedNodeID`: a linked node has no fields, regions or SKU and the plan builder skips it (`linked node`) |
 | `EditableRegion` | `Id`, `Html` | `Html` decoded exactly once |
-| `SourceAttachment` | `AttachmentGuid`, `NodeId`, `FileName`, `Extension`, `MimeType`, `Size`, `Width?`, `Height?`, `Title?`, `FieldColumn?`, `IsUnsorted`, `Order` | Current versions only; `FieldColumn` set for file fields and attachment group fields |
+| `SourceAttachment` | `AttachmentGuid`, `NodeId`, `FileName`, `Extension`, `MimeType`, `FieldColumn?`, `IsUnsorted`, `Order` | Current versions only; `FieldColumn` set for file fields and attachment group fields |
 | `SourceAlias` | `NodeId`, `UrlPath`, `IsWildcard` | `IsWildcard` when the path contains `{` or a wildcard rule is set |
-| `SourceMediaFile` | `FileGuid`, `LibraryName`, `LibraryFolder`, `FilePath`, `FileName`, `Extension`, `MimeType`, `Size`, `Title?` | `FilePath` relative to the library folder |
+| `SourceMediaFile` | `FileGuid`, `LibraryName`, `LibraryFolder`, `FilePath`, `FileName`, `Extension`, `MimeType` | `FilePath` relative to the library folder |
 | `SourceRow` | `Id`, `Values: IReadOnlyDictionary<string, object?>` | Rows of a profile-listed class that have no document |
 | `SourceCounts` | `DocumentsByClass: IReadOnlyDictionary<string,int>`, `Attachments`, `MediaFiles`, `Aliases` | Taken before and after a run |
 
@@ -27,11 +27,13 @@ Loaded from `profiles/<name>.json`; schema in [contracts/site-profile.md](contra
 
 | Record | Fields |
 |---|---|
-| `SiteProfile` | `Name`, `OwnHosts`, `ExcludedPathPrefixes`, `FolderPaths`, `ApplicationRoutePrefixes`, `NotUploadedPaths`, `Types: IReadOnlyList<TypeMapping>`, `Reparent: IReadOnlyList<ReparentRule>`, `UnlinkedRows: IReadOnlyList<UnlinkedRowRule>`, `MediaRoot?` |
+| `SiteProfile` | `Name`, `OwnHosts`, `ExcludedPathPrefixes`, `FolderPaths`, `ApplicationRoutePrefixes`, `NotUploadedPaths`, `Types: IReadOnlyList<TypeMapping>`, `Reparent: IReadOnlyList<ReparentRule>`, `UnlinkedRows: IReadOnlyList<UnlinkedRowRule>`, `MediaRoot?`, `SettingsFolder?`, `Placements: IReadOnlyList<PlacementRule>` (empty when the profile has none) |
 | `TypeMapping` | `KenticoClass`, `TargetAlias`, `TargetName`, `HasTemplate`, `AllowedChildren`, `Fields: IReadOnlyList<FieldMapping>`, `PathOverride?` (a specific alias path mapped to another target type, e.g. `/Articles` to `articleList`) |
 | `FieldMapping` | `Source` (column, `region:first`, `region:rest`, `sku:<column>`, `doc:<metadata>`), `TargetAlias`, `Editor`, `Group` |
 | `ReparentRule` | `KenticoClass`, `NewParentPath`, `UrlNameFrom` (`NodeAlias` or a field), `OldRoutePattern?` (e.g. `/search-featured/{Name}`) |
 | `UnlinkedRowRule` | `KenticoClass`, `NameField`, `ParentPath`, `Publish` (false for Q5) |
+| `PlacementRule` | `Path` (source alias path of the page to move), `NewParentPath` (a planned page, the settings folder, or `/` for the top level below the home page), `UrlName?` (replaces the URL name of the moved page) |
+| `SettingsFolderRule` | `Path` (`/` plus one segment, the name placements address the folder by; not the path of a source page), `Name` |
 
 ## 3. Migration plan (`Migration/MigrationPlan.cs`)
 
@@ -48,7 +50,7 @@ Produced by `PlanBuilder.Build(SourceSite, SiteProfile)`. Deterministic: same in
 | `MediaSource` | `AttachmentGuid?`, `MediaFile: SourceMediaFile?`, `FileName`, `MimeType` | Exactly one of the two sources is set |
 | `TargetDocument` | `Key`, `ParentKey?`, `TypeAlias`, `Name`, `UrlName`, `SortOrder`, `Publish`, `Values: IReadOnlyDictionary<string, PlannedValue>`, `OldPath`, `OldUrls`, `ScheduleNote?` | `OldUrls` are raw old URL forms (research R10) |
 | `PlannedValue` | `Editor`, `Raw: object?` | Rich text kept raw until `RichTextRewriter` runs |
-| `SkippedItem` | `Category` (`application page`, `host file`, `attachment history`, `wildcard route`, `missing file`, `unmapped type`), `Identifier`, `OldPath`, `Reason` | |
+| `SkippedItem` | `Category` (`application page`, `host file`, `wildcard route`, `missing file`, `unmapped type`, `linked node`, `unreferenced attachment`), `Identifier`, `OldPath`, `Reason` | |
 | `PlanIssue` | `Severity` (`error`, `warning`), `OldPath`, `Message` | |
 
 Key derivation (`Migration/Keys.cs`): `Keys.ForDocument(SourceDocument) = NodeGuid`,
@@ -66,8 +68,10 @@ Key derivation (`Migration/Keys.cs`): `Keys.ForDocument(SourceDocument) = NodeGu
 
 String values are constants, not enums (some contain spaces). `SkippedItem.Category` uses
 `SkipCategories` (`ApplicationPage` = `application page`, `HostFile` = `host file`,
-`AttachmentHistory` = `attachment history`, `WildcardRoute` = `wildcard route`, `MissingFile` =
-`missing file`, `UnmappedType` = `unmapped type`). `PlanIssue.Severity` uses `PlanSeverities`
+`WildcardRoute` = `wildcard route`, `MissingFile` = `missing file`, `UnmappedType` =
+`unmapped type`, `LinkedNode` = `linked node`, `UnreferencedAttachment` =
+`unreferenced attachment`). Old attachment versions (`CMS_AttachmentHistory`) are never read, so
+they have no category. `PlanIssue.Severity` uses `PlanSeverities`
 (`Error` = `error`, `Warning` = `warning`). `PlannedRedirect.Reason` uses `RedirectReasons`
 (`Aspx` = `aspx`, `Alias` = `alias`, `Home` = `home`, `Renamed` = `renamed`, `UrlPath` =
 `url-path`). `MediaType` (`Folder`, `Image`, `File`) is an enum.
@@ -81,7 +85,7 @@ String values are constants, not enums (some contain spaces). `SkippedItem.Categ
 | `MissingInSource` | `Key`, `Kind`, `SourceKey`, `Name` | Items with a `migrationSourceKey` not in the plan (FR-015b) |
 
 `ItemResult.Kind` uses `ItemKinds`: `DataType` = `dataType`, `DocumentType` = `documentType`,
-`Template` = `template`, `Media` = `media`, `Document` = `document`, `Redirect` = `redirect`.
+`Template` = `template`, `Media` = `media`, `Document` = `document`, `Redirect` = `redirect`, `Sort` = `sort` (putting the children of one parent in the planned order; keyed by the parent).
 
 Hidden properties on every migrated document (composition `migrationComposition`; media items carry none, see research R5-media):
 `migrationSourceKey` (Textstring, read-only label) and `migrationFingerprint` (Textstring,
@@ -94,12 +98,12 @@ read-only label). The fingerprint is SHA-256 (hex) over canonical JSON of the ow
 |---|---|
 | `TargetCounts` | `DocumentsByType: IReadOnlyDictionary<string,int>`, `Media`, `Redirects` |
 | `CountDrop` | `Type`, `Before`, `After` |
-| `PhaseTiming` | `Phase` (`Phases` constants: `read`, `plan`, `snapshot`, `schema`, `media`, `documents`, `redirects`, `verify`, `report`), `Elapsed` |
+| `PhaseTiming` | `Phase` (`Phases` constants: `read`, `plan`, `snapshot`, `schema`, `media`, `documents`, `redirects`, `verify`), `Elapsed` |
 | `LinkStats` | `Rewritten`, `External`, `ToApplication`, `Unresolved: IReadOnlyList<UnresolvedLink>` |
 | `UnresolvedLink` | `OldPath` (page the link is on), `Href` |
 | `RedirectSummary` | `Reason` (`RedirectReasons`), `Created`, `Existing`, `Failed` |
 | `ScheduleNote` | `Key`, `OldPath`, `Note` (publish window not applied, FR-014a) |
-| `RunReport` | `RunId`, `Command`, `StartedUtc`, `Duration`, `KenticoVersion`, `SourceCountsBefore?`, `SourceCountsAfter?`, `TargetCountsBefore?`, `TargetCountsAfter?` (null when the phase did not run, for example `plan` without a target), `CountDrops`, `Items: IReadOnlyList<ItemResult>` (summarised per kind and type), `Skipped`, `Issues`, `Links: LinkStats`, `Redirects: IReadOnlyList<RedirectSummary>`, `MissingInSource`, `Schedules: IReadOnlyList<ScheduleNote>`, `Timings`, `ExitCode` |
+| `RunReport` | `RunId`, `Command`, `StartedUtc`, `Duration`, `KenticoVersion`, `SourceCountsBefore?`, `SourceCountsAfter?`, `TargetCountsBefore?`, `TargetCountsAfter?` (null when the phase did not run, for example `plan` without a target), `CountDrops`, `Items: IReadOnlyList<ItemResult>` (summarised per kind and type), `Skipped`, `Issues`, `Links: LinkStats`, `Redirects: IReadOnlyList<RedirectSummary>`, `MissingInSource`, `Schedules: IReadOnlyList<ScheduleNote>`, `Timings`, `ExitCode`, `PlannedRedirects?: IReadOnlyList<PlannedRedirect>` (marked `JsonIgnore`: written to `redirects.csv` only, not repeated in `report.json`) |
 
 Exit codes: `0` success, `1` item errors, `2` configuration or connection error or plan errors,
 `3` count drop. Reports contain paths, keys, counts and timings only (FR-028).

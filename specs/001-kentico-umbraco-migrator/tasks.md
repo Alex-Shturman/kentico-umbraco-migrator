@@ -11,7 +11,7 @@ description: "Task list for the Kentico to Umbraco content migrator"
 
 **Tests**: Required. Constitution IV makes the pure core test-first: every "Test" task is written
 and run (and fails) before the implementation task that follows it. Integration tests are tagged
-`[Trait("Category","Integration")]` and skip when their environment variables are missing.
+`[Trait("Category","Integration")]` and skip when their environment is missing.
 
 **Organization**: Tasks are grouped by user story. Every task ends with its **Check** (a command
 the owner can run) and a commit with a Conventional Commit message (Constitution VII). No task may
@@ -22,8 +22,10 @@ leave the solution unbuildable.
 - **[P]**: Can run in parallel (different files, no dependency on an unfinished task)
 - **[Story]**: User story from spec.md (US1 to US6)
 - Common commands: `dotnet build` (0 warnings), `dotnet test --filter "Category!=Integration"`
-  (unit), `dotnet test --filter "Category=Integration"` (needs `KENTICO_SAMPLE_CS` and/or
-  `UMBRACO_URL`, `UMBRACO_CLIENT_ID`, `UMBRACO_CLIENT_SECRET`).
+  (unit), `dotnet test --filter "Category=Integration"` (needs `KENTICO_SAMPLE_CS`, the connection
+  string of the restored sample database, and for the tests that call the host the migrator's
+  `Umbraco:ClientSecret` from the user secrets of project `KenticoMigrator` or the environment variable
+  `Umbraco__ClientSecret`; `Umbraco__BaseUrl` and `Umbraco__ClientId` are optional).
 
 ## Path Conventions
 
@@ -229,7 +231,8 @@ redirect with 301; redirects visible in the back office.
 - [x] T066 [US2] Decide and implement the publish rule for an update: today an update (source text changed) or a move publishes the page again even when an editor unpublished it, while the rest of FR-015b and the "Notes on re-runs" say a re-run never publishes a page that is not published. Either publish only when the page was published before, or document the update as the one exception; add a test for an unpublished, unedited page whose source text changed. **Check**: the test passes and `contracts/cli.md` states the rule once. **Result (2026-11-14)**: rule implemented in `DocumentSync` (publish after create always; after update, move or overwrite only when published before), unit and end-to-end tests added, rule stated in `contracts/cli.md`.
 - [x] T067 [US2] Write a report for every run: wrap the read phase and the first snapshot in `MigrationRunner` so that a SQL or API failure still writes `report.json` and `report.md` with an error issue (exit code 2). **Check**: a runner test with a failing reader finds the report files. **Result (2026-11-14)**: a failure in the read phase or the first snapshot writes `report.json` and `report.md` with a safe error issue and exits 2 (runner tests added); exit codes table in `contracts/cli.md` updated.
 - [x] T068 [US2] Evaluate the count guard when a run stops with an exception after the first snapshot: take a best-effort target count in the failure path and keep exit code 3 when a count dropped. **Check**: a runner test whose phase throws after a lowered count returns 3. **Result (2026-11-14)**: a run that throws after the first snapshot takes the second snapshot when possible and runs the count guard (exit 3 wins over 1); when the second snapshot fails a warning says so (runner tests added); exit codes table in `contracts/cli.md` updated.
-- [ ] T069 [US6] The first two commits contain a brand name from the client's data in a document that was deleted later (the old plan under docs/superpowers). Rewrite the history before the first upload to a remote (owner decision on the method) and add a denylist scan kept outside the repository to the release routine. **Check**: `git log --all -S<word>` finds nothing for each denylist word. **Progress (2026-11-14)**: the current tree is clean (the name is replaced by an invented one in UrlIndexTests and T045; a denylist scan of all tracked files finds no other brand name). History rewrite is left to the owner.
+- [ ] T069 [US6] A client brand name is in the repository history: the document that held it (the old plan under docs/superpowers) was committed in commit 587f2e8 and deleted later. Commit 587f2e8 is already in the published history (`origin/main`, the repository was pushed when it was created), so the name is public until the history is rewritten; commit 6b5ed47 (local only) also touches that folder. Commits are listed by hash only, never by the word. The current tree is clean. A history rewrite plus a force-push, and a denylist scan kept outside the repository for the release routine, await the owner's decision (method, and whether the already published copy can be withdrawn). **Check**: `git log --all -S<word>` finds nothing for each denylist word, on the local repository and on a fresh clone of the remote. **Progress (2026-11-14)**: the current tree is clean (the name is replaced by an invented one in UrlIndexTests and T045; a denylist scan of all tracked files finds no other brand name). History rewrite and force-push are left to the owner.
+- [x] T070 [US5] Decision Q1 (lookups go to a hidden `settings` folder): profile keys `settingsFolder` and `placements` (contracts/site-profile.md), `PlanBuilder` creates the tool-owned folder (published, `umbracoNaviHide`, `hideFromSitemap`) and moves the four lookup containers under it; `contentFolder` gets the navigation composition. Tests in `PlanBuilderPlacementTests` and `SiteProfileTests`. **Result (2026-11-14)**: the 13 lookup items live at `/settings/<container>/<alias>`; reference run second pass 0 created, 0 updated.
 
 ---
 
@@ -244,7 +247,7 @@ redirect with 301; redirects visible in the back office.
 | FR-005 type and field mapping | T007, T025, T026, T027, T056 |
 | FR-006 excluded paths | T027, T056 |
 | FR-007 folders | T027 |
-| FR-008 re-parenting | T027, T051 |
+| FR-008 re-parenting | T027, T051, T065, T070 |
 | FR-009 stable keys | T009, T026, T027, T041 |
 | FR-010 plan errors block writes | T027, T037 |
 | FR-011 preview with diff | T033, T037, T038 |
@@ -253,7 +256,7 @@ redirect with 301; redirects visible in the back office.
 | FR-014 pages, publish, sort | T029, T031 |
 | FR-014a unpublished source pages | T020, T024, T027, T036 |
 | FR-015 upsert | T029, T033 |
-| FR-015a editor protection | T032, T033, T038 |
+| FR-015a editor protection | T032, T033, T038, T066 |
 | FR-015b never delete, report missing | T035, T062 |
 | FR-016 continue after item failure | T029, T037 |
 | FR-017 token renewal | T016 |
@@ -262,11 +265,11 @@ redirect with 301; redirects visible in the back office.
 | FR-020 brand route links | T045 |
 | FR-021 other links counted, unresolved listed | T046, T047, T048 |
 | FR-022 URL name from node alias | T027 |
-| FR-023 redirects from actual URLs | T051, T052, T054 |
-| FR-024 redirects visible, not duplicated | T049, T055 |
+| FR-023 redirects from actual URLs | T051, T052, T054, T064 |
+| FR-024 redirects visible, not duplicated | T049, T055, T064 |
 | FR-025 wildcard aliases reported | T051 |
-| FR-026 count snapshot and guard | T034, T037 |
-| FR-027 report content | T036, T037 |
+| FR-026 count snapshot and guard | T034, T037, T068 |
+| FR-027 report content | T036, T037, T067 |
 | FR-028 no field values in reports | T036 |
 | FR-029 exit codes | T010, T037 |
 | FR-030 configuration and secrets | T002, T013, T015 |
@@ -346,4 +349,3 @@ Then: T023 reader, T026 then T027 plan builder, T028 schema sync, T029 document 
 - Every task ends with its Check and a commit; never leave the build broken.
 - Formats owned by Umbraco come from the T018 fixtures, not from memory.
 - No client material in fixtures, tests, sample data or commit messages (Constitution I).
-- [x] T070 [US5] Decision Q1 (lookups go to a hidden `settings` folder): profile keys `settingsFolder` and `placements` (contracts/site-profile.md), `PlanBuilder` creates the tool-owned folder (published, `umbracoNaviHide`, `hideFromSitemap`) and moves the four lookup containers under it; `contentFolder` gets the navigation composition. Tests in `PlanBuilderPlacementTests` and `SiteProfileTests`. **Result (2026-11-14)**: the 13 lookup items live at `/settings/<container>/<alias>`; reference run second pass 0 created, 0 updated.

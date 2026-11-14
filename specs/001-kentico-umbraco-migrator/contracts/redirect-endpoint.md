@@ -45,6 +45,16 @@ Response `200 OK`:
   extension to its redirect finder. After that `/aboutus.aspx` reaches a registered
   `/aboutus.aspx` redirect and answers 301.
 
+## Template-less pages
+
+A page without a template (a migrated folder) has no routable URL for Umbraco's own rendering: a request for its path
+would answer 404 before redirects are tried. The host's `TemplateLessRedirectFinder` (registered by
+`TemplateLessRedirectComposer`, runs before the URL finder) therefore answers `301` with the registered redirect when
+the page found at the request path has no template, a redirect is registered for that path, and the redirect's target
+page exists and has a template. In every other case it does nothing: a folder without a redirect still answers 404, and a
+redirect to a target without a template is not followed. The finder looks routes up without a domain root, so it is meant
+for a site without configured domains.
+
 ## Acceptance check
 
 After registering `/test-old` for a published test page, `curl -sI <host>/test-old` returns `301`

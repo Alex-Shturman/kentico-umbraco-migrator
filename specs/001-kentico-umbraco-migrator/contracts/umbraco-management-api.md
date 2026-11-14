@@ -13,13 +13,18 @@ All shapes below were verified against Umbraco 17.8.1 (research R6 to R10).
 | Document type | `GET /document-type/{id}`, `POST /document-type`, `PUT /document-type/{id}` | Compositions and allowed children by key |
 | Template | `GET /template/{id}`, `POST /template`, `PUT /template/{id}` | Razor content from embedded views |
 | Temporary file | `POST /temporary-file` (multipart: `Id`, `File`) | Used for every media upload (R9) |
-| Media | `GET /media/{id}`, `POST /media`, `PUT /media/{id}`, `GET /tree/media/children?parentId=` | `umbracoFile` value is `{ "temporaryFileId": "<id>" }` for `Image` and `File` (R9) |
+| Media | `GET /media/{id}`, `POST /media`, `PUT /media/{id}`, `GET /tree/media/children?parentId=`, `GET /tree/media/root` | `umbracoFile` value is `{ "temporaryFileId": "<id>" }` for `Image` and `File` (R9) |
 | Document | `GET /document/{id}`, `POST /document`, `PUT /document/{id}` | Invariant variant `{ culture: null, segment: null, name }` |
+| Media type lookup | `GET /item/media-type/search?query=<Folder\|Image\|File>` | Finds the built-in media type key by exact name |
+| Media URLs | `GET /media/urls?id=<id>&id=<id>` | `[ { id, urlInfos: [ { url } ] } ]`; the first url becomes the image source in rich text |
+| Move | `PUT /document/{id}/move`, `PUT /media/{id}/move` with `{ target: { id } or null }` | Puts an item an editor moved back under its planned parent |
+| Recycle bin restore | `PUT /recycle-bin/document/{id}/restore`, `PUT /recycle-bin/media/{id}/restore` with `{ target: { id } or null }` | An item an editor trashed is restored (never recreated), counts as `Created` |
+| Tree ancestors | `GET /tree/document/ancestors?descendantId=<id>`, `GET /tree/media/ancestors?descendantId=<id>` | The last entry is the item itself; its `parent.id` is the actual parent, used to detect an item an editor moved |
 | Publish | `PUT /document/{id}/publish` with `publishSchedules: [{ culture: null }]` | Only after `Created`/`Updated` with `Publish = true` |
 | Sort | `PUT /document/sort` | Only when order differs |
 | Read URLs | `GET /document/urls?id=<id>&id=<id>` | `[ { id, urlInfos: [ { culture, url, provider, isExternal, message } ] } ]`; `url` is relative with a trailing slash (R10) |
 | Tree walk (missing in source, counts) | `GET /tree/document/root`, `GET /tree/document/children?parentId=&skip=&take=` | Paged, 100 per page |
-| Redirects (count only) | `GET /redirect-management?skip=0&take=1` | `{ total, items[] { id, originalUrl, destinationUrl, created, document: { id }, culture } }`; `total` used in `TargetCounts`; `DELETE /redirect-management/{id}` removes one |
+| Redirects (count only) | `GET /redirect-management?skip=0&take=1` | `{ total, items[] { id, originalUrl, destinationUrl, created, document: { id }, culture } }`; `total` used in `TargetCounts` |
 | Redirects (create) | Host endpoint, see [redirect-endpoint.md](redirect-endpoint.md) | Not part of the Management API |
 
 ## Error handling
