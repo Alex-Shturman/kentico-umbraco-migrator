@@ -31,6 +31,9 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
     /// <summary>Temporary files uploaded so far: id to file name.</summary>
     public Dictionary<Guid, string> TemporaryFiles { get; } = [];
 
+    /// <summary>Registered redirects (old path, target key), as the host endpoint keeps them.</summary>
+    public HashSet<(string Url, string ContentKey)> Redirects { get; } = [];
+
     /// <summary>Actual URLs the document URL endpoint answers with; a document not listed has no URL.</summary>
     public Dictionary<Guid, string> DocumentUrls { get; } = [];
 
@@ -145,7 +148,7 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
 
         if (route == "/redirect-management")
         {
-            return Task.FromResult<JsonNode?>(new JsonObject { ["total"] = RedirectTotal, ["items"] = new JsonArray() });
+            return Task.FromResult<JsonNode?>(new JsonObject { ["total"] = RedirectTotal + Redirects.Count, ["items"] = new JsonArray() });
         }
 
         if (route is "/tree/document/ancestors" or "/tree/media/ancestors")
@@ -191,6 +194,25 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
         }
 
         var parts = path.Trim('/').Split('/');
+        if (method == HttpMethod.Post && path == "/kentico-migration/redirects")
+        {
+            int created = 0, existing = 0;
+            foreach (var entry in node!.AsArray())
+            {
+                if (Redirects.Add((entry!["url"]!.GetValue<string>(), entry["contentKey"]!.GetValue<string>())))
+                {
+                    created++;
+                }
+                else
+                {
+                    existing++;
+                }
+            }
+
+            var answer = new JsonObject { ["created"] = created, ["existing"] = existing, ["failed"] = new JsonArray() };
+            return Task.FromResult(new ApiResponse(HttpStatusCode.OK, answer.ToJsonString(), null));
+        }
+
         if (method == HttpMethod.Post && parts.Length == 1)
         {
             var item = (JsonObject)node!;

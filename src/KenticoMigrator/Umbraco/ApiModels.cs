@@ -98,3 +98,5 @@ internal sealed record MediaCreateRequest(
     IReadOnlyList<VariantRequest> Variants);
 
 internal sealed record MediaUpdateRequest(JsonArray Values, IReadOnlyList<VariantRequest> Variants);
+
+internal sealed record RedirectRequest(string Url, Guid ContentKey);

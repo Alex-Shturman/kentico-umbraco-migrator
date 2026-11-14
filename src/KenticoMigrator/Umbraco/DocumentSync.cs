@@ -18,6 +18,8 @@ public sealed record SyncOptions(bool OverwriteEdited = false, bool Preview = fa
 /// </summary>
 public sealed class DocumentSync
 {
+    private const int UrlBatchSize = 50;
+
     private static readonly Guid RootKey = Guid.Empty;
 
     // Stands for a parent that is not the planned one; it never equals a planned parent key, so the fingerprint differs.
@@ -174,6 +176,34 @@ public sealed class DocumentSync
 
         await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
         return await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The actual URL of each page that has one (<c>GET /document/urls</c>, research R10): relative, lower case, with a trailing
+    /// slash, the first entry that is a path of this site. A page that is not published has none and is left out.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<Guid, string>> ReadUrlsAsync(IReadOnlyCollection<Guid> keys, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        var urls = new Dictionary<Guid, string>();
+        foreach (var batch in keys.Chunk(UrlBatchSize))
+        {
+            var answer = await _api.GetAsync($"/document/urls?{string.Join('&', batch.Select(k => $"id={k:D}"))}", ct).ConfigureAwait(false);
+            foreach (var entry in answer?.AsArray() ?? [])
+            {
+                var url = entry?["urlInfos"]?.AsArray()
+                    .Where(i => i?["isExternal"]?.GetValue<bool>() != true)
+                    .Select(i => i?["url"]?.GetValue<string>())
+                    .FirstOrDefault(u => u is { Length: > 0 } && u[0] == '/');
+                if (url is not null && entry?["id"]?.GetValue<string>() is { } id)
+                {
+                    urls[Guid.Parse(id)] = url;
+                }
+            }
+        }
+
+        return urls;
     }
 
     // One rewriter call per rich text value; the counts of the call go to the totals, the unresolved hrefs to the page's list.

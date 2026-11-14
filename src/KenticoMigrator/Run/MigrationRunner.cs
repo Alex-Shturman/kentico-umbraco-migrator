@@ -46,6 +46,8 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         var timings = new List<PhaseTiming>();
         var extraIssues = new List<PlanIssue>();
         var links = new LinkStats(0, 0, 0, []);
+        IReadOnlyList<RedirectSummary> redirectSummaries = [];
+        IReadOnlyList<PlannedRedirect> plannedRedirects = [];
 
         var (site, sourceBefore) = await Timed(timings, Phases.Read, async () =>
         {
@@ -79,11 +81,12 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
                 plan.Skipped,
                 [.. plan.Issues, .. extraIssues],
                 links,
-                [],
+                redirectSummaries,
                 missing,
                 [.. plan.Documents.Where(d => d.ScheduleNote is not null).Select(d => new ScheduleNote(d.Key, d.OldPath, d.ScheduleNote!))],
                 timings,
-                exit);
+                exit,
+                plannedRedirects);
             Report.Write(report, request.RunDir);
             output.WriteLine($"report: {request.RunDir}");
         }
@@ -128,6 +131,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         var schemaResults = new List<ItemResult>();
         var mediaResults = new List<ItemResult>();
         var documents = new List<ItemResult>();
+        var redirectFailures = new List<ItemResult>();
         IReadOnlyList<MissingInSource> missing = [];
         TargetCounts? after = null;
         IReadOnlyList<CountDrop> drops = [];
@@ -173,6 +177,21 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
                 return (0, Summarize(documents.Where(r => r.Kind == ItemKinds.Document).ToList()) + (sorts.Count > 0 ? $"; sorts: {Summarize(sorts)}" : string.Empty));
             }).ConfigureAwait(false);
 
+            // Redirects come from the URLs the pages really have (FR-023), so they follow the page writes.
+            await Timed(timings, Phases.Redirects, async () =>
+            {
+                var urls = await documentSync.ReadUrlsAsync([.. plan.Documents.Where(d => d.Publish).Select(d => d.Key)], ct).ConfigureAwait(false);
+                var planned = RedirectPlanner.Plan(plan.Documents, urls);
+                extraIssues.AddRange(planned.Warnings);
+                plannedRedirects = planned.Redirects;
+                var registered = await new RedirectSync(api!).RegisterAsync(planned.Redirects, preview, ct).ConfigureAwait(false);
+                redirectSummaries = registered.Summaries;
+                redirectFailures.AddRange(registered.Failures);
+                return (0, preview
+                    ? $"{planned.Redirects.Count} planned, nothing sent"
+                    : $"{planned.Redirects.Count} planned; {Total(registered.Summaries, s => s.Created)} created, {Total(registered.Summaries, s => s.Existing)} existing, {Total(registered.Summaries, s => s.Failed)} failed");
+            }).ConfigureAwait(false);
+
             missing = await Timed(timings, Phases.Verify, async () =>
             {
                 var found = await MissingInSourceFinder.FindAsync(plan, api!, ct).ConfigureAwait(false);
@@ -199,7 +218,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             extraIssues.Add(new PlanIssue(PlanSeverities.Error, "target", $"The run stopped early: {reason}"));
         }
 
-        var items = schemaResults.Concat(mediaResults).Concat(documents).ToList();
+        var items = schemaResults.Concat(mediaResults).Concat(documents).Concat(redirectFailures).ToList();
 
         WriteSummaryLines(plan, items, missing, drops, links);
 
@@ -324,6 +343,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
     {
         ItemKinds.Document => "documents",
         ItemKinds.Media => "media",
+        ItemKinds.Redirect => "redirects",
         ItemKinds.Template => "templates",
         ItemKinds.DocumentType => "document types",
         ItemKinds.DataType => "data types",
@@ -339,6 +359,8 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             output.WriteLine($"failed {group.Key.Kind}: {group.Key.Error} ({group.Count()}x, e.g. {(example.OldPath.Length > 0 ? example.OldPath : example.TypeAlias)})");
         }
     }
+
+    private static int Total(IReadOnlyList<RedirectSummary> summaries, Func<RedirectSummary, int> count) => summaries.Sum(count);
 
     private static string Summarize(IReadOnlyList<ItemResult> results) =>
         results.Count == 0

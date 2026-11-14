@@ -655,4 +655,17 @@ public sealed class DocumentSyncTests
         Assert.Contains("href=\"/Target\"", markup);
         Assert.Equal(0, sync.Links.Rewritten);
     }
+
+    [Fact]
+    public async Task Read_urls_returns_the_first_site_relative_url_of_each_page_that_has_one()
+    {
+        var api = new FakeUmbracoApi();
+        api.DocumentUrls[GuidFor(1)] = "/home/";
+        var sync = NewSync(api);
+
+        var urls = await sync.ReadUrlsAsync([GuidFor(1), GuidFor(2)], Ct);
+
+        Assert.Equal("/home/", urls[GuidFor(1)]);
+        Assert.False(urls.ContainsKey(GuidFor(2)));
+    }
 }

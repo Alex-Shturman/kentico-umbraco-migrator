@@ -342,6 +342,46 @@ public sealed class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task Redirects_are_registered_from_the_urls_read_back_and_reported_by_reason()
+    {
+        var api = NewApi();
+        var plan = PlanBuilder.Build(SampleSite(), SampleProfile());
+        var about = plan.Documents.Single(d => d.OldPath == "/About");
+        api.DocumentUrls[about.Key] = "/about-us/";
+
+        var exit = await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.Success, exit);
+        Assert.NotEmpty(api.Redirects);
+        Assert.All(api.Redirects, r => Assert.Equal(about.Key.ToString("D"), r.ContentKey));
+        Assert.Contains(api.Redirects, r => r.Url == "/About.aspx");
+        var csv = File.ReadAllText(Path.Combine(_runDir, "redirects.csv"));
+        Assert.Contains("/About.aspx,/about-us/,", csv);
+        var summaries = ReadReport().GetProperty("redirects").EnumerateArray().ToList();
+        Assert.Equal(api.Redirects.Count, summaries.Sum(s => s.GetProperty("created").GetInt32()));
+        Assert.Contains("redirects:", _output.ToString());
+
+        var second = await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+        Assert.Equal(ExitCodes.Success, second);
+        Assert.Equal(0, ReadReport().GetProperty("redirects").EnumerateArray().Sum(s => s.GetProperty("created").GetInt32()));
+        Assert.Equal(api.Redirects.Count, ReadReport().GetProperty("redirects").EnumerateArray().Sum(s => s.GetProperty("existing").GetInt32()));
+    }
+
+    [Fact]
+    public async Task Preview_plans_redirects_but_sends_none()
+    {
+        var api = NewApi();
+        var plan = PlanBuilder.Build(SampleSite(), SampleProfile());
+        api.DocumentUrls[plan.Documents.Single(d => d.OldPath == "/About").Key] = "/about-us/";
+
+        var exit = await Runner(Reader(), api).RunAsync(Request(CliArguments.Plan), Ct);
+
+        Assert.Equal(ExitCodes.Success, exit);
+        Assert.Empty(api.Redirects);
+        Assert.DoesNotContain(api.Calls, c => c.Path == "/kentico-migration/redirects");
+    }
+
+    [Fact]
     public async Task Failure_after_the_writes_still_writes_the_report_and_gives_exit_code_1()
     {
         var api = NewApi();
