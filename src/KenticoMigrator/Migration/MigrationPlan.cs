@@ -107,6 +107,8 @@ public static class SkipCategories
     public const string WildcardRoute = "wildcard route";
     public const string MissingFile = "missing file";
     public const string UnmappedType = "unmapped type";
+    public const string LinkedNode = "linked node";
+    public const string UnreferencedAttachment = "unreferenced attachment";
 }
 
 public sealed record PlanIssue(

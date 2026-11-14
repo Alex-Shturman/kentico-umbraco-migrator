@@ -59,3 +59,5 @@ summary form, the path of the run folder, and the exit code. No field content is
 | `redirects.csv` | `old_url,new_url,target_key,reason` |
 | `skipped.csv` | `category,identifier,old_path,reason` |
 | `items.csv` | `kind,type,key,old_path,outcome,error` |
+
+`redirects.csv` is the one file that may hold content-derived text: old URLs (a brand route contains the brand name by design). URLs are not field values in the FR-028 sense. `error` keeps the HTTP status and problem title only (first line, cut before any response body or quote, at most 200 characters). Sync code must put only `HTTP <status> <problem title>` into `ItemResult.Error`, never the problem `detail`; the report cut is a safety net, not a filter.

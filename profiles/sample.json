@@ -1,0 +1,126 @@
+{
+  // Profile for the invented kayak shop in sample/ (Kentico 11 sample database).
+  "name": "sample",
+  "ownHosts": ["kayaks.example", "www.kayaks.example"],
+
+  "mediaRoot": "sample/media",
+  "notUploadedPaths": ["/Downloads/Paddling-Map"],
+
+  "excludedPathPrefixes": ["/Account"],
+  "folderPaths": ["/Catalog"],
+  "applicationRoutePrefixes": ["/cart", "/search"],
+
+  "types": [
+    {
+      "kenticoClass": "CMS.MenuItem",
+      "targetAlias": "contentPage",
+      "targetName": "Content page",
+      "hasTemplate": true,
+      "allowedChildren": ["contentPage", "articleList", "folder"],
+      "fields": [
+        { "source": "doc:DocumentName", "target": "title", "editor": "TextBox", "group": "Content" },
+        { "source": "region:first", "target": "bodyText", "editor": "RichText", "group": "Content" },
+        { "source": "region:rest", "target": "additionalContent", "editor": "RichText", "group": "Content" }
+      ]
+    },
+    {
+      "kenticoClass": "CMS.MenuItem",
+      "pathOverride": "/Articles",
+      "targetAlias": "articleList",
+      "targetName": "Article list",
+      "hasTemplate": true,
+      "allowedChildren": ["article"],
+      "fields": [
+        { "source": "doc:DocumentName", "target": "title", "editor": "TextBox", "group": "Content" },
+        { "source": "region:first", "target": "bodyText", "editor": "RichText", "group": "Content" }
+      ]
+    },
+    {
+      "kenticoClass": "CMS.MenuItem",
+      "pathOverride": "/Catalog/Brands",
+      "targetAlias": "brandList",
+      "targetName": "Brand list",
+      "hasTemplate": true,
+      "allowedChildren": ["brand"],
+      "fields": [
+        { "source": "doc:DocumentName", "target": "title", "editor": "TextBox", "group": "Content" },
+        { "source": "region:first", "target": "bodyText", "editor": "RichText", "group": "Content" }
+      ]
+    },
+    {
+      "kenticoClass": "CMS.MenuItem",
+      "pathOverride": "/Catalog/Products",
+      "targetAlias": "productList",
+      "targetName": "Product list",
+      "hasTemplate": true,
+      "allowedChildren": ["product"],
+      "fields": [
+        { "source": "doc:DocumentName", "target": "title", "editor": "TextBox", "group": "Content" },
+        { "source": "region:first", "target": "bodyText", "editor": "RichText", "group": "Content" }
+      ]
+    },
+    {
+      "kenticoClass": "CMS.Article",
+      "targetAlias": "article",
+      "targetName": "Article",
+      "hasTemplate": true,
+      "allowedChildren": [],
+      "fields": [
+        { "source": "ArticleName", "target": "title", "editor": "TextBox", "group": "Content" },
+        { "source": "ArticleTeaserText", "target": "teaserText", "editor": "RichText", "group": "Content" },
+        { "source": "file:ArticleTeaserImage", "target": "teaserImage", "editor": "MediaSingle", "group": "Content" },
+        { "source": "ArticleText", "target": "bodyText", "editor": "RichText", "group": "Content" },
+        { "source": "doc:DocumentCreatedWhen", "target": "publishDate", "editor": "DateTime", "group": "Content" }
+      ]
+    },
+    {
+      "kenticoClass": "DEMO.Brand",
+      "targetAlias": "brand",
+      "targetName": "Brand",
+      "hasTemplate": true,
+      "allowedChildren": [],
+      "fields": [
+        { "source": "Name", "target": "title", "editor": "TextBox", "group": "Content" },
+        { "source": "HeaderText", "target": "heading", "editor": "TextBox", "group": "Content" },
+        { "source": "TopText", "target": "introText", "editor": "RichText", "group": "Content" },
+        { "source": "BottomText", "target": "bodyText", "editor": "RichText", "group": "Content" },
+        { "source": "Synonyms", "target": "synonyms", "editor": "Tags", "group": "Content" },
+        { "source": "MetaTitle", "target": "metaTitle", "editor": "TextBox", "group": "SEO" },
+        { "source": "MetaDescription", "target": "metaDescription", "editor": "TextArea", "group": "SEO" },
+        { "source": "MetaKeywords", "target": "metaKeywords", "editor": "TextBox", "group": "SEO" }
+      ]
+    },
+    {
+      "kenticoClass": "DEMO.Product",
+      "targetAlias": "product",
+      "targetName": "Product",
+      "hasTemplate": true,
+      "allowedChildren": [],
+      "fields": [
+        { "source": "ProductName", "target": "title", "editor": "TextBox", "group": "Content" },
+        { "source": "Featured", "target": "featured", "editor": "TrueFalse", "group": "Content" },
+        { "source": "attachments:Images", "target": "images", "editor": "MediaMultiple", "group": "Content" },
+        { "source": "ShippingInformation", "target": "shippingInformation", "editor": "RichText", "group": "Content" },
+        { "source": "ShippingImage", "target": "shippingImage", "editor": "DropDown", "group": "Content" },
+        { "source": "sku:SKUNumber", "target": "sku", "editor": "TextBox", "group": "Commerce" },
+        { "source": "sku:SKUPrice", "target": "price", "editor": "Decimal", "group": "Commerce" },
+        { "source": "sku:SKURetailPrice", "target": "retailPrice", "editor": "Decimal", "group": "Commerce" },
+        { "source": "sku:SKUAvailableItems", "target": "availableItems", "editor": "Integer", "group": "Commerce" },
+        { "source": "sku:SKUEnabled", "target": "available", "editor": "TrueFalse", "group": "Commerce" }
+      ]
+    }
+  ],
+
+  "reparent": [
+    {
+      "kenticoClass": "DEMO.Brand",
+      "newParentPath": "/Catalog/Brands",
+      "urlNameFrom": "NodeAlias",
+      "oldRoutePattern": "/brand-search/{Name}"
+    }
+  ],
+
+  "unlinkedRows": [
+    { "kenticoClass": "DEMO.Brand", "nameField": "Name", "parentPath": "/Catalog/Brands", "publish": false }
+  ]
+}
