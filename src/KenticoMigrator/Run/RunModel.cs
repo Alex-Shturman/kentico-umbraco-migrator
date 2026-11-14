@@ -40,6 +40,7 @@ public sealed record PhaseTiming(string Phase, TimeSpan Elapsed);
 /// <summary>
 /// The verification report (data-model section 6). Holds paths, keys, counts and timings only.
 /// <paramref name="Items"/> are the per-item results; writers summarise them per kind and type.
+/// <paramref name="PlannedRedirects"/> are the individual redirects written to <c>redirects.csv</c>.
 /// </summary>
 public sealed record RunReport(
     string RunId,
@@ -60,7 +61,8 @@ public sealed record RunReport(
     IReadOnlyList<MissingInSource> MissingInSource,
     IReadOnlyList<ScheduleNote> Schedules,
     IReadOnlyList<PhaseTiming> Timings,
-    int ExitCode);
+    int ExitCode,
+    IReadOnlyList<PlannedRedirect>? PlannedRedirects = null);
 
 /// <summary>Rich text link totals plus the unresolved links with the page's old path.</summary>
 public sealed record LinkStats(
