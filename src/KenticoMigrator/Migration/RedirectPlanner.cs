@@ -1,54 +1,38 @@
 namespace KenticoMigrator.Migration;
 
+/// <summary>Planned redirects plus warnings for old URLs claimed by more than one document.</summary>
+public sealed record RedirectPlanResult(
+    IReadOnlyList<PlannedRedirect> Redirects,
+    IReadOnlyList<PlanIssue> Warnings);
+
 /// <summary>
 /// Plans redirects from the old URL forms of published documents to their actual Umbraco URLs (FR-023).
-/// A redirect is planned only when the old URL would not be served as is. Pure: the actual URLs are read back
+/// A redirect is planned only when the old URL would not be served as is. Umbraco routing is case-insensitive
+/// (verified, research R10), so a difference in case alone needs no redirect. Pure: the actual URLs are read back
 /// from Umbraco by the caller.
 /// </summary>
 public static class RedirectPlanner
 {
-    /// <summary>
-    /// Whether Umbraco routing distinguishes upper and lower case. The default is the case-insensitive behaviour
-    /// (<c>No_redirect_when_only_case_differs</c>); research R10 and task T019 confirm it against a running host.
-    /// Flip this one constant, or pass the argument, when the host turns out to be case-sensitive.
-    /// </summary>
-    public const bool DefaultCaseSensitiveRouting = false;
-
-    public static IReadOnlyList<PlannedRedirect> Plan(
+    public static RedirectPlanResult Plan(
         IReadOnlyList<TargetDocument> documents,
-        IReadOnlyDictionary<Guid, string> actualUrls,
-        bool caseSensitiveRouting = DefaultCaseSensitiveRouting) =>
-        Plan(documents, actualUrls, out _, caseSensitiveRouting);
-
-    /// <summary>As <see cref="Plan(IReadOnlyList{TargetDocument}, IReadOnlyDictionary{Guid, string}, bool)"/>, also returning warnings for old URLs claimed by more than one document.</summary>
-    public static IReadOnlyList<PlannedRedirect> Plan(
-        IReadOnlyList<TargetDocument> documents,
-        IReadOnlyDictionary<Guid, string> actualUrls,
-        out IReadOnlyList<PlanIssue> warnings,
-        bool caseSensitiveRouting = DefaultCaseSensitiveRouting)
+        IReadOnlyDictionary<Guid, string> actualUrls)
     {
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(actualUrls);
 
         var redirects = new List<PlannedRedirect>();
-        var issues = new List<PlanIssue>();
+        var warnings = new List<PlanIssue>();
         var claimedBy = new Dictionary<string, TargetDocument>(StringComparer.Ordinal);
 
-        var ordered = documents
-            .Where(d => d.Publish && actualUrls.ContainsKey(d.Key))
-            .OrderBy(d => d.SortOrder)
-            .ThenBy(d => d.OldPath, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(d => d.Key);
-
-        foreach (var doc in ordered)
+        foreach (var doc in ClaimOrder.Sort(documents.Where(d => d.Publish && actualUrls.ContainsKey(d.Key))))
         {
             var actual = actualUrls[doc.Key];
-            var actualRoute = Route(actual, caseSensitiveRouting);
+            var actualRoute = Route(actual);
             var planned = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var oldUrl in doc.OldUrls)
             {
-                var oldRoute = Route(oldUrl, caseSensitiveRouting);
+                var oldRoute = Route(oldUrl);
                 if (oldRoute == actualRoute || !planned.Add(oldRoute))
                 {
                     continue;
@@ -56,39 +40,38 @@ public static class RedirectPlanner
 
                 if (claimedBy.TryGetValue(oldRoute, out var winner))
                 {
-                    issues.Add(new PlanIssue(
+                    // FR-028: name pages by old path and key only, never by the URL text (it can contain a content value).
+                    warnings.Add(new PlanIssue(
                         PlanSeverities.Warning,
                         doc.OldPath,
-                        $"Old URL '{oldUrl}' is also claimed by '{winner.OldPath}'; the redirect goes to '{winner.OldPath}'."));
+                        $"An old URL of this page is also claimed by '{winner.OldPath}' (key {winner.Key}); the redirect goes there."));
                     continue;
                 }
 
                 claimedBy.Add(oldRoute, doc);
-                redirects.Add(new PlannedRedirect(oldUrl, doc.Key, actual, ReasonFor(doc, oldUrl, oldRoute, actualRoute, caseSensitiveRouting)));
+                redirects.Add(new PlannedRedirect(oldUrl, doc.Key, actual, ReasonFor(doc, oldUrl, oldRoute, actualRoute)));
             }
         }
 
-        warnings = issues;
-        return redirects;
+        return new RedirectPlanResult(redirects, warnings);
     }
 
     // Comparison keeps ".aspx": Umbraco does not serve it, so "/About.aspx" is never the same URL as "/about".
-    private static string Route(string url, bool caseSensitive) =>
-        UrlIndex.NormalizeRoute(url, null, ignoreCase: !caseSensitive, stripAspx: false);
+    private static string Route(string url) => UrlIndex.NormalizeRoute(url, null, ignoreCase: true, stripAspx: false);
 
-    private static string ReasonFor(TargetDocument doc, string oldUrl, string oldRoute, string actualRoute, bool caseSensitive)
+    private static string ReasonFor(TargetDocument doc, string oldUrl, string oldRoute, string actualRoute)
     {
         if (actualRoute == "/")
         {
             return RedirectReasons.Home;
         }
 
-        if (oldUrl.TrimEnd('/').EndsWith(".aspx", StringComparison.OrdinalIgnoreCase))
+        if (oldRoute.EndsWith(".aspx", StringComparison.Ordinal))
         {
             return RedirectReasons.Aspx;
         }
 
-        if (oldRoute == Route(doc.OldPath, caseSensitive))
+        if (oldRoute == Route(doc.OldPath))
         {
             return RedirectReasons.UrlPath;
         }

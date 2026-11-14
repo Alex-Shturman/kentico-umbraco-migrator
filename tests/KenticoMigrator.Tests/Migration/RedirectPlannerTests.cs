@@ -20,28 +20,13 @@ public sealed class RedirectPlannerTests
     [Fact]
     public void No_redirect_when_only_case_differs()
     {
+        // Verified on Umbraco 17: routing is case-insensitive and document URLs end with a slash.
         var docs = new[] { Target(1, "/AboutUs", ["/AboutUs"]) };
 
-        var redirects = RedirectPlanner.Plan(docs, Actual((1, "/aboutus/")));
+        var plan = RedirectPlanner.Plan(docs, Actual((1, "/aboutus/")));
 
-        Assert.Empty(redirects);
-    }
-
-    [Fact]
-    public void Case_variant_gets_redirect_when_routing_is_case_sensitive()
-    {
-        var docs = new[] { Target(1, "/AboutUs", ["/AboutUs"]) };
-
-        var redirects = RedirectPlanner.Plan(docs, Actual((1, "/aboutus")), caseSensitiveRouting: true);
-
-        var redirect = Assert.Single(redirects);
-        Assert.Equal(new PlannedRedirect("/AboutUs", GuidFor(1), "/aboutus", RedirectReasons.UrlPath), redirect);
-    }
-
-    [Fact]
-    public void Case_sensitive_default_is_off_and_is_one_constant()
-    {
-        Assert.False(RedirectPlanner.DefaultCaseSensitiveRouting);
+        Assert.Empty(plan.Redirects);
+        Assert.Empty(plan.Warnings);
     }
 
     [Fact]
@@ -49,7 +34,7 @@ public sealed class RedirectPlannerTests
     {
         var docs = new[] { Target(1, "/AboutUs", ["/AboutUs", "/AboutUs.aspx"]) };
 
-        var redirect = Assert.Single(RedirectPlanner.Plan(docs, Actual((1, "/aboutus"))));
+        var redirect = Assert.Single(RedirectPlanner.Plan(docs, Actual((1, "/aboutus"))).Redirects);
 
         Assert.Equal(new PlannedRedirect("/AboutUs.aspx", GuidFor(1), "/aboutus", RedirectReasons.Aspx), redirect);
     }
@@ -59,7 +44,7 @@ public sealed class RedirectPlannerTests
     {
         var docs = new[] { Target(1, "/Home", ["/Home", "/Home.aspx"]) };
 
-        var redirects = RedirectPlanner.Plan(docs, Actual((1, "/")));
+        var redirects = RedirectPlanner.Plan(docs, Actual((1, "/"))).Redirects;
 
         Assert.Equal(["/Home", "/Home.aspx"], redirects.Select(r => r.OldUrl));
         Assert.All(redirects, r =>
@@ -74,7 +59,7 @@ public sealed class RedirectPlannerTests
     {
         var docs = new[] { Target(1, "/Catalog/Brands/Sea-Spirit", ["/brand-search/Sea Spirit"]) };
 
-        var redirect = Assert.Single(RedirectPlanner.Plan(docs, Actual((1, "/catalog/brands/sea-spirit"))));
+        var redirect = Assert.Single(RedirectPlanner.Plan(docs, Actual((1, "/catalog/brands/sea-spirit"))).Redirects);
 
         Assert.Equal(new PlannedRedirect("/brand-search/Sea Spirit", GuidFor(1), "/catalog/brands/sea-spirit", RedirectReasons.Renamed), redirect);
     }
@@ -84,7 +69,7 @@ public sealed class RedirectPlannerTests
     {
         var docs = new[] { Target(1, "/Catalog/Products/Tandem", ["/Catalog/Products/Tandem", "/tandem"]) };
 
-        var redirects = RedirectPlanner.Plan(docs, Actual((1, "/products/tandem")));
+        var redirects = RedirectPlanner.Plan(docs, Actual((1, "/products/tandem"))).Redirects;
 
         Assert.Equal([RedirectReasons.UrlPath, RedirectReasons.Alias], redirects.Select(r => r.Reason));
     }
@@ -94,7 +79,7 @@ public sealed class RedirectPlannerTests
     {
         var docs = new[] { Target(1, "/Draft", ["/Draft.aspx"], publish: false) };
 
-        Assert.Empty(RedirectPlanner.Plan(docs, Actual((1, "/draft"))));
+        Assert.Empty(RedirectPlanner.Plan(docs, Actual((1, "/draft"))).Redirects);
     }
 
     [Fact]
@@ -102,26 +87,28 @@ public sealed class RedirectPlannerTests
     {
         var docs = new[] { Target(1, "/AboutUs", ["/AboutUs.aspx"]) };
 
-        Assert.Empty(RedirectPlanner.Plan(docs, Actual()));
+        Assert.Empty(RedirectPlanner.Plan(docs, Actual()).Redirects);
     }
 
     [Fact]
-    public void Duplicate_old_url_goes_to_first_by_sort_order_with_warning()
+    public void Duplicate_old_url_goes_to_first_by_claim_order_with_warning_that_names_no_url()
     {
         var docs = new[]
         {
-            Target(2, "/Second", ["/shared"], sortOrder: 5),
-            Target(1, "/First", ["/shared"], sortOrder: 2),
+            Target(2, "/Second", ["/shared-secret-route"], sortOrder: 5),
+            Target(1, "/First", ["/shared-secret-route"], sortOrder: 2),
         };
 
-        var redirects = RedirectPlanner.Plan(docs, Actual((1, "/first"), (2, "/second")), out var warnings);
+        var plan = RedirectPlanner.Plan(docs, Actual((1, "/first"), (2, "/second")));
 
-        var redirect = Assert.Single(redirects);
+        var redirect = Assert.Single(plan.Redirects);
         Assert.Equal(GuidFor(1), redirect.TargetKey);
-        var warning = Assert.Single(warnings);
+        var warning = Assert.Single(plan.Warnings);
         Assert.Equal(PlanSeverities.Warning, warning.Severity);
         Assert.Equal("/Second", warning.OldPath);
-        Assert.Contains("/shared", warning.Message);
+        Assert.Contains("/First", warning.Message);
+        Assert.Contains(GuidFor(1).ToString(), warning.Message);
+        Assert.DoesNotContain("shared-secret-route", warning.Message);
     }
 
     [Fact]
@@ -129,9 +116,9 @@ public sealed class RedirectPlannerTests
     {
         var docs = new[] { Target(1, "/AboutUs", ["/old", "/OLD"]) };
 
-        var redirects = RedirectPlanner.Plan(docs, Actual((1, "/aboutus")), out var warnings);
+        var plan = RedirectPlanner.Plan(docs, Actual((1, "/aboutus")));
 
-        Assert.Single(redirects);
-        Assert.Empty(warnings);
+        Assert.Single(plan.Redirects);
+        Assert.Empty(plan.Warnings);
     }
 }
