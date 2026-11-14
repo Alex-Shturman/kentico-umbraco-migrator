@@ -21,12 +21,12 @@ it. Neither sends a delete. Both now compare the method name, so the check is a 
 
 - The tracked tree is compliant: no client content, only section-level paths, class and column names in
   `profiles/pontoonsonly.json`, aggregate numbers in the docs. `Sources/`, `sources/`, `_work/` and `runs/` are ignored.
-- **Not compliant in the git history (T069).** A deleted planning document that was committed in the first commits contains a
-  brand name from the client's data. The current tree is clean, but the history still holds the name: commit 587f2e8 is
-  already in the published history (`origin/main`; the repository was uploaded to GitHub when it was created), so the name is
-  public today. Commit 6b5ed47 (local only) also touches the folder of that document. Commits are listed by hash only. A history
-  rewrite and a force-upload need the owner's decision (method, and whether the published copy can be withdrawn); this review did
-  not rewrite or upload anything.
+- **Fixed in the git history (T069).** A planning document committed in the first commits, and one task text, contained a
+  brand name from the client's data, and the first upload to GitHub included it. On the owner's decision the history was
+  rewritten with `git filter-repo --replace-text` (the name replaced by an invented one in every commit) and force-uploaded.
+  A scan of every commit for the name finds nothing, and a scan of all published file versions against the source's brand,
+  user, listing, page and domain values (kept outside the repository and deleted afterwards) finds only common words, the
+  client name and section-level paths. GitHub may keep unreferenced old commits in its cache for a while.
 - Fixed: `*.zip`, `*.7z` and `*.bacpac` are now git-ignored (the client archives named in DISCOVERY.md would otherwise be staged by
   `git add .`).
 - `scripts/check-repo.sh` checks paths and em dashes only; it cannot find client words. A denylist kept outside the repository
