@@ -23,13 +23,24 @@ internal sealed class EndToEndHost : IDisposable
 
     private readonly ManagementApiClient _client;
 
-    private EndToEndHost(ManagementApiClient client)
+    private EndToEndHost(ManagementApiClient client, string baseUrl)
     {
         _client = client;
         Api = new UmbracoApi(client);
+        BaseUrl = baseUrl.TrimEnd('/');
+        // The host runs with the development certificate on localhost; redirects are read, not followed.
+        Site = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = (_, _, _, _) => true, AllowAutoRedirect = false })
+        {
+            BaseAddress = new Uri(BaseUrl),
+        };
     }
 
     public IUmbracoApi Api { get; }
+
+    /// <summary>The site itself (public pages and media), not the Management API.</summary>
+    public HttpClient Site { get; }
+
+    public string BaseUrl { get; }
 
     public static EndToEndHost Connect()
     {
@@ -38,11 +49,14 @@ internal sealed class EndToEndHost : IDisposable
         var secret = config["Umbraco:ClientSecret"];
         Assert.SkipWhen(string.IsNullOrEmpty(secret), "Umbraco:ClientSecret is not configured.");
 
-        return new EndToEndHost(ManagementApiClient.Create(new UmbracoOptions(
-            config["Umbraco:BaseUrl"] is { Length: > 0 } url ? url : "https://localhost:44317",
-            config["Umbraco:ClientId"] is { Length: > 0 } id ? id : "umbraco-back-office-migrator",
-            secret!,
-            AllowUntrustedCertificate: true)));
+        var baseUrl = config["Umbraco:BaseUrl"] is { Length: > 0 } url ? url : "https://localhost:44317";
+        return new EndToEndHost(
+            ManagementApiClient.Create(new UmbracoOptions(
+                baseUrl,
+                config["Umbraco:ClientId"] is { Length: > 0 } id ? id : "umbraco-back-office-migrator",
+                secret!,
+                AllowUntrustedCertificate: true)),
+            baseUrl);
     }
 
     /// <summary>Runs a command with the sample profile and a fresh run folder.</summary>
@@ -77,7 +91,11 @@ internal sealed class EndToEndHost : IDisposable
             i.GetProperty("outcome").GetString()!))];
     }
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose()
+    {
+        Site.Dispose();
+        _client.Dispose();
+    }
 }
 
 /// <summary>A migrated document as read back through the API.</summary>
