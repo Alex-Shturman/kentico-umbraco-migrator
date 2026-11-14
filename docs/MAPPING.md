@@ -11,8 +11,9 @@ Based on the inventory in [DISCOVERY.md](DISCOVERY.md).
 - **Clean target.** Only content moves. Templates, web parts, layouts,
   transformations and application data stay behind.
 - **Deterministic and re-runnable.** Each migrated item keeps its Kentico
-  identity (NodeGUID / AttachmentGUID) in a hidden property or a mapping
-  table, so a second run updates items instead of duplicating them.
+  identity: pages carry the NodeGUID as their key and in the hidden
+  property `migrationSourceKey`, media carry the AttachmentGUID or FileGUID as
+  their key, so a second run updates items instead of duplicating them.
 - **Read-only source.** The tool reads the Kentico database through SQL only.
   It needs no Kentico API and no Kentico DLLs.
 - **Write through the Umbraco Management API.** Data types, document types,
@@ -30,22 +31,22 @@ Based on the inventory in [DISCOVERY.md](DISCOVERY.md).
 |---|---|---|
 | `seoComposition` | `metaTitle` (TextBox), `metaDescription` (TextArea), `metaKeywords` (TextBox) | all page types |
 | `navigationComposition` | `umbracoNaviHide` (TrueFalse), `hideFromSitemap` (TrueFalse) | all page types |
-| `legacyComposition` | `legacyNodeGuid` (TextBox, read-only label), `legacyAliasPath` (TextBox, read-only label) | all migrated types |
+| `migrationComposition` | `umbracoUrlName` (TextBox, the node alias, FR-022), `migrationSourceKey` (TextBox, read-only label), `migrationFingerprint` (TextBox, read-only label) | all migrated types, folders included |
 
 Source of the values: `DocumentPageTitle`, `DocumentPageDescription`,
 `DocumentPageKeyWords`, `DocumentMenuItemHideInNavigation`,
-`DocumentShowInSiteMap`, `NodeGUID`, `NodeAliasPath`. Brands override the
+`DocumentShowInSiteMap`, `NodeAlias` (URL name), `NodeGUID` (source key). Brands override the
 meta fields with their own `MetaTitle`/`MetaDescription`/`MetaKeywords`.
 
 ### 2.2 Page types
 
 | Kentico page type | Umbraco Document Type | Allowed children |
 |---|---|---|
-| `CMS.Root` + `/Home` | `home` (root node) | all top-level types |
+| `CMS.MenuItem` `/Home` | `contentPage`, the home page (there is no `home` type; the `CMS.Root` node itself is not migrated) | all top-level types |
 | `CMS.MenuItem` (content pages, including `/Listings/Brands`) | `contentPage` | `contentPage` |
 | `CMS.MenuItem` `/Articles` | `articleList` | `article` |
 | `CMS.Article` | `article` | none |
-| `CMS.MenuItem` `/Listings/Search-Featured` (live alias `/search-featured`) | `brandList`, stays below the `/Listings` folder (see section 3) | `brand` |
+| `CMS.MenuItem` `/Listings/Search-Featured` (live alias `/search-featured`) | `brandList`, placed at the top level with the URL name `search-featured` (see section 3) | `brand` |
 | `PO.Make` | `brand` | none (10 brand rows without a node are created unpublished, decision Q5) |
 | `CMS.MenuItem` `/Products/*` | `productList` | `product` |
 | `PO.Product` | `product` | none |
@@ -78,7 +79,7 @@ these rows by ID.
 
 ### 2.4 Fields to property editors
 
-`home`, `contentPage` (from `CMS.MenuItem` and editable regions)
+`contentPage` (from `CMS.MenuItem`, the home page included, and editable regions)
 
 | Kentico source | Umbraco property | Property editor |
 |---|---|---|
@@ -195,7 +196,7 @@ Rules:
 - Publish state: everything published in Kentico is published in Umbraco.
 - Hidden from navigation: `umbracoNaviHide`.
 - Created and updated dates: Umbraco sets its own create date. The original
-  dates are written to `publishDate` (articles) and to the run report.
+  creation date is written to `publishDate` (articles); reports hold no dates of pages (FR-028).
 - Old URLs are compared case-insensitively. Verified on Umbraco 17.8.1: a page at
   `/fixture-page` is served (HTTP 200, no redirect) for `/Fixture-Page` and
   `/FIXTURE-PAGE` too, so a case-only difference needs no redirect. A request
@@ -216,9 +217,8 @@ Media folders created on the reference run: `Kentico import`, `Attachments` and 
 first segment of the owning page's path, so product images share one folder.
 
 - Binary data is read from `CMS_Attachment.AttachmentBinary` (all 25 are in the DB).
-- File name, extension, MIME type, width/height and title come from the
-  attachment row. `AttachmentGUID` is stored on the media item so it can be
-  matched again later.
+- File name, extension and MIME type come from the attachment row. `AttachmentGUID` is used as the key of the media item, so a
+  later run finds it again.
 - The `.xml` feed and `ads.txt` (2 of the 5 `CMS.File` nodes) are not
   uploaded. They are listed in the report as files for the new host
   (decision Q6), so 3 `CMS.File` nodes become media. One more attachment of a
@@ -267,7 +267,7 @@ Outputs:
   host site that calls `IRedirectUrlService` (the Management API can list
   and delete redirects but not create them). They show up in the backoffice
   under "URL Redirect Management".
-- A `redirects.csv` in the run output (old URL, new URL, reason).
+- A `redirects.csv` in the run output (`old_url,new_url,target_key,reason`).
 - Wildcard aliases of application routes (listing detail) are not
   redirected; they are listed in the report as application routes.
 

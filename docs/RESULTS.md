@@ -22,7 +22,7 @@ on the source (marked as such). Date of the run: 2026-11-14. Profile: `profiles/
 | Document aliases | 28 (3 are wildcard routes) | 3 wildcard routes reported, not redirected; the others are part of the redirects below |
 | Redirects | | 261 (was 306 before T065) |
 
-Document types per target type: `brand` 98, `article` 6, `contentPage` 9, `contentFolder` 8, `horsepowerRange` 6,
+Documents per target type: `brand` 98, `article` 6, `contentPage` 9, `contentFolder` 8, `horsepowerRange` 6,
 `listingCategory` 4, `product` 3, `listingPlan` 2, `articleList` 1, `brandList` 1, `productList` 1, `renewalPlan` 1.
 
 Schema written by the first run: 2 data types, 15 document types, 2 templates (19 created, 19 unchanged on the second run).
@@ -37,7 +37,7 @@ Schema written by the first run: 2 data types, 15 document types, 2 templates (1
 | host file (the product feed and `ads.txt`, not uploaded) | 2 |
 | unreferenced attachment (an attachment of a file page that no field uses) | 1 |
 
-No item failed, no issue was raised, 0 pages are missing in the source and 0 count drops occurred. No page has a publish
+No item failed, 0 pages are missing in the source and 0 count drops occurred. The only issue raised is one plan warning, the `/products` collision with a folder URL (see "URL check"). No page has a publish
 window, so no schedules were left unapplied.
 
 ## Media
@@ -125,7 +125,7 @@ T060, 2026-11-14: the repository was cloned into a temporary folder and README s
 were followed with a stopwatch on a machine that already had the .NET SDK, Docker with a SQL Server container, the NuGet
 packages and the development certificate. Elapsed time from the clone to the end of the second `migrate` run: **52 seconds** (the
 services and the sample restore 9 s, host start including the first build and the Umbraco install 29 s in total, `plan` 41 s,
-`migrate` 49 s, URL check 50 s, second run 52 s). The repository itself finished the 25 URLs of the sample with 25 OK and the
+`migrate` 49 s, URL check 50 s, second run 52 s). The repository itself finished the URL check of the sample (25 lines then, 26 since T064 added the `/catalog` alias) with all lines OK and the
 second run with 0 created and 0 updated.
 
 Two honest limits of this measurement:
