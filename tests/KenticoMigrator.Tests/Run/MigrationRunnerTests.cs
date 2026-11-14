@@ -357,4 +357,21 @@ public sealed class MigrationRunnerTests : IDisposable
         Assert.Equal(3, documents.Count);
         Assert.All(documents, l => Assert.Contains(",Created,", l));
     }
+
+    [Fact]
+    public async Task Edited_template_is_counted_and_the_overwrite_option_reaches_the_schema_sync()
+    {
+        var api = NewApi();
+        await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+        var templateKey = PlanBuilder.Build(SampleSite(), SampleProfile()).Templates.Single(t => t.Alias == "migratedPage").Key;
+        api.Stored("template", templateKey)!["content"] = "<p>changed in the back office</p>";
+
+        await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+        Assert.Contains("edited in Umbraco, not updated: 1", _output.ToString());
+        Assert.Equal("<p>changed in the back office</p>", api.Stored("template", templateKey)!["content"]!.GetValue<string>());
+
+        await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate, overwrite: true), Ct);
+        Assert.Contains("edited in Umbraco, overwritten: 1", _output.ToString());
+        Assert.Contains("migrator-fingerprint", api.Stored("template", templateKey)!["content"]!.GetValue<string>());
+    }
 }

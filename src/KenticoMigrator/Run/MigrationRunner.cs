@@ -135,7 +135,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         {
             await Timed(timings, Phases.Schema, async () =>
             {
-                schemaResults.AddRange(await new SchemaSync(api!).EnsureAsync(plan, preview, ct).ConfigureAwait(false));
+                schemaResults.AddRange(await new SchemaSync(api!).EnsureAsync(plan, preview, ct, request.OverwriteEdited).ConfigureAwait(false));
                 return (0, Summarize(schemaResults));
             }).ConfigureAwait(false);
 
@@ -174,7 +174,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
 
         var items = schemaResults.Concat(documents).ToList();
 
-        WriteSummaryLines(plan, documents, missing, drops);
+        WriteSummaryLines(plan, items, missing, drops);
 
         var exit = drops.Count > 0 ? ExitCodes.CountDrop
             : stopped || items.Any(r => r.Outcome == ItemOutcome.Failed) ? ExitCodes.ItemErrors
@@ -238,7 +238,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
     }
 
     // Warnings in summary form: counts only, with old paths in the report files.
-    private void WriteSummaryLines(MigrationPlan plan, IReadOnlyList<ItemResult> documents, IReadOnlyList<MissingInSource> missing, IReadOnlyList<CountDrop> drops)
+    private void WriteSummaryLines(MigrationPlan plan, IReadOnlyList<ItemResult> items, IReadOnlyList<MissingInSource> missing, IReadOnlyList<CountDrop> drops)
     {
         if (plan.Skipped.Count > 0)
         {
@@ -251,13 +251,13 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             output.WriteLine($"plan warnings: {warnings}");
         }
 
-        var skipped = documents.Count(r => r.Outcome == ItemOutcome.EditedSkipped);
+        var skipped = items.Count(r => r.Outcome == ItemOutcome.EditedSkipped);
         if (skipped > 0)
         {
             output.WriteLine($"edited in Umbraco, not updated: {skipped}");
         }
 
-        var overwritten = documents.Count(r => r.Outcome == ItemOutcome.EditedOverwritten);
+        var overwritten = items.Count(r => r.Outcome == ItemOutcome.EditedOverwritten);
         if (overwritten > 0)
         {
             output.WriteLine($"edited in Umbraco, overwritten: {overwritten}");

@@ -33,7 +33,19 @@
         <img src="@image.Url()" alt="@image.Name" />
     }
 }
+@if (Model.HasValue("sku"))
+{
+    <p class="sku">@Model.Value("sku")</p>
+}
 @if (Model.HasValue("price"))
 {
     <p class="price">@Model.Value("price")</p>
+}
+@if (Model.HasValue("retailPrice"))
+{
+    <p class="retail-price">@Model.Value("retailPrice")</p>
+}
+@if (Model.HasValue("available"))
+{
+    <p class="available">@(Model.Value<bool>("available") ? "In stock" : "Not available")</p>
 }

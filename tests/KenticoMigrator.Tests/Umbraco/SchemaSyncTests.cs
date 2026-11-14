@@ -171,4 +171,156 @@ public sealed class SchemaSyncTests
         var items = values.Single(v => v!["alias"]!.GetValue<string>() == "items")!["value"]!.AsArray();
         Assert.Equal(["standard", "express"], items.Select(i => i!.GetValue<string>()));
     }
+
+    private static void AddEditorAdditions(FakeUmbracoApi api, TargetDocumentType type, Guid containerId, Guid propertyId)
+    {
+        var stored = api.Stored("document-type", type.Key)!;
+        stored["containers"]!.AsArray().Add(new JsonObject { ["id"] = containerId.ToString("D"), ["parent"] = null, ["name"] = "Editor tab", ["type"] = "Tab", ["sortOrder"] = 9 });
+        stored["properties"]!.AsArray().Add(new JsonObject
+        {
+            ["id"] = propertyId.ToString("D"),
+            ["container"] = new JsonObject { ["id"] = containerId.ToString("D") },
+            ["sortOrder"] = 99,
+            ["alias"] = "editorNote",
+            ["name"] = "Editor note",
+            ["dataType"] = new JsonObject { ["id"] = api.BuiltInDataTypes["Textstring"].ToString("D") },
+            ["variesByCulture"] = false,
+            ["variesBySegment"] = false,
+            ["validation"] = new JsonObject { ["mandatory"] = false },
+            ["appearance"] = new JsonObject { ["labelOnTop"] = false },
+        });
+        stored["allowedDocumentTypes"]!.AsArray().Add(new JsonObject
+        {
+            ["documentType"] = new JsonObject { ["id"] = Plan.DocumentTypes.Single(t => t.Alias == "brand").Key.ToString("D") },
+            ["sortOrder"] = 9,
+        });
+        stored["compositions"]!.AsArray().Add(new JsonObject
+        {
+            ["documentType"] = new JsonObject { ["id"] = Plan.DocumentTypes.Single(t => t.Alias == "contentFolder").Key.ToString("D") },
+            ["compositionType"] = "Composition",
+        });
+    }
+
+    [Fact]
+    public async Task Editor_additions_on_a_document_type_do_not_make_it_changed_and_survive_an_update()
+    {
+        var api = NewApi();
+        var sync = new SchemaSync(api);
+        await sync.EnsureAsync(Plan, preview: false, Ct);
+        var article = Plan.DocumentTypes.Single(t => t.Alias == "article");
+        var containerId = Guid.NewGuid();
+        var propertyId = Guid.NewGuid();
+        AddEditorAdditions(api, article, containerId, propertyId);
+        api.Calls.Clear();
+
+        var quiet = await sync.EnsureAsync(Plan, preview: false, Ct);
+
+        Assert.All(quiet, r => Assert.Equal(ItemOutcome.Unchanged, r.Outcome));
+        Assert.Empty(api.Writes);
+
+        api.Stored("document-type", article.Key)!["name"] = "Tampered";
+        var results = await sync.EnsureAsync(Plan, preview: false, Ct);
+
+        Assert.Equal(ItemOutcome.Updated, results.Single(r => r.Key == article.Key).Outcome);
+        var stored = api.Stored("document-type", article.Key)!;
+        Assert.Equal(article.Name, stored["name"]!.GetValue<string>());
+        Assert.Contains(stored["properties"]!.AsArray(), p => p!["alias"]!.GetValue<string>() == "editorNote" && p["id"]!.GetValue<string>() == propertyId.ToString("D"));
+        Assert.Contains(stored["containers"]!.AsArray(), c => c!["id"]!.GetValue<string>() == containerId.ToString("D"));
+        Assert.Contains(stored["allowedDocumentTypes"]!.AsArray(), a => a!["documentType"]!["id"]!.GetValue<string>() == Plan.DocumentTypes.Single(t => t.Alias == "brand").Key.ToString("D"));
+        Assert.Contains(stored["compositions"]!.AsArray(), c => c!["documentType"]!["id"]!.GetValue<string>() == Plan.DocumentTypes.Single(t => t.Alias == "contentFolder").Key.ToString("D"));
+        Assert.Contains(stored["properties"]!.AsArray(), p => p!["alias"]!.GetValue<string>() == "bodyText");
+    }
+
+    [Fact]
+    public async Task Planned_property_keeps_the_id_it_already_has()
+    {
+        var api = NewApi();
+        var sync = new SchemaSync(api);
+        await sync.EnsureAsync(Plan, preview: false, Ct);
+        var article = Plan.DocumentTypes.Single(t => t.Alias == "article");
+        var stored = api.Stored("document-type", article.Key)!;
+        var existingId = Guid.NewGuid().ToString("D");
+        stored["properties"]!.AsArray().Single(p => p!["alias"]!.GetValue<string>() == "bodyText")!["id"] = existingId;
+        stored["name"] = "Tampered";
+
+        await sync.EnsureAsync(Plan, preview: false, Ct);
+
+        Assert.Equal(existingId, stored["properties"]!.AsArray().Single(p => p!["alias"]!.GetValue<string>() == "bodyText")!["id"]!.GetValue<string>());
+    }
+
+    private static Guid MigratedPageKey => Plan.Templates.Single(t => t.Alias == "migratedPage").Key;
+
+    [Fact]
+    public async Task Written_template_carries_a_fingerprint_marker()
+    {
+        var api = NewApi();
+
+        await new SchemaSync(api).EnsureAsync(Plan, preview: false, Ct);
+
+        Assert.Matches(@"@\* migrator-fingerprint:[0-9a-f]{64} \*@", api.Stored("template", MigratedPageKey)!["content"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Edited_template_is_skipped_without_the_flag()
+    {
+        var api = NewApi();
+        var sync = new SchemaSync(api);
+        await sync.EnsureAsync(Plan, preview: false, Ct);
+        var stored = api.Stored("template", MigratedPageKey)!;
+        stored["content"] = stored["content"]!.GetValue<string>().Replace("<h1>", "<h1 class=\"mine\">", StringComparison.Ordinal);
+        var edited = stored["content"]!.GetValue<string>();
+        api.Calls.Clear();
+
+        var results = await sync.EnsureAsync(Plan, preview: false, Ct);
+
+        Assert.Equal(ItemOutcome.EditedSkipped, results.Single(r => r.Key == MigratedPageKey).Outcome);
+        Assert.Empty(api.Writes);
+        Assert.Equal(edited, stored["content"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Edited_template_is_overwritten_with_the_flag_and_then_unchanged()
+    {
+        var api = NewApi();
+        var sync = new SchemaSync(api);
+        await sync.EnsureAsync(Plan, preview: false, Ct);
+        var original = api.Stored("template", MigratedPageKey)!["content"]!.GetValue<string>();
+        api.Stored("template", MigratedPageKey)!["content"] = original + "<p>edited</p>";
+
+        var results = await sync.EnsureAsync(Plan, preview: false, Ct, overwriteEdited: true);
+
+        Assert.Equal(ItemOutcome.EditedOverwritten, results.Single(r => r.Key == MigratedPageKey).Outcome);
+        Assert.Equal(original, api.Stored("template", MigratedPageKey)!["content"]!.GetValue<string>());
+        var again = await sync.EnsureAsync(Plan, preview: false, Ct);
+        Assert.All(again, r => Assert.Equal(ItemOutcome.Unchanged, r.Outcome));
+    }
+
+    [Fact]
+    public async Task Template_without_a_marker_counts_as_edited()
+    {
+        var api = NewApi();
+        api.Seed("template", MigratedPageKey, new JsonObject { ["name"] = "Migrated page", ["alias"] = "migratedPage", ["content"] = "<p>made by hand</p>" });
+
+        var results = await new SchemaSync(api).EnsureAsync(Plan, preview: false, Ct);
+
+        Assert.Equal(ItemOutcome.EditedSkipped, results.Single(r => r.Key == MigratedPageKey).Outcome);
+        Assert.DoesNotContain(api.Writes, c => c.Path == $"/template/{MigratedPageKey:D}");
+    }
+
+    [Fact]
+    public async Task Edited_template_in_preview_is_skipped_or_would_update_with_the_flag()
+    {
+        var api = NewApi();
+        var sync = new SchemaSync(api);
+        await sync.EnsureAsync(Plan, preview: false, Ct);
+        api.Stored("template", MigratedPageKey)!["content"] = "@* migrator-fingerprint:" + new string('a', 64) + " *@ edited";
+        api.Calls.Clear();
+
+        var plain = await sync.EnsureAsync(Plan, preview: true, Ct);
+        var overwrite = await sync.EnsureAsync(Plan, preview: true, Ct, overwriteEdited: true);
+
+        Assert.Equal(ItemOutcome.EditedSkipped, plain.Single(r => r.Key == MigratedPageKey).Outcome);
+        Assert.Equal(ItemOutcome.WouldUpdate, overwrite.Single(r => r.Key == MigratedPageKey).Outcome);
+        Assert.Empty(api.Writes);
+    }
 }
