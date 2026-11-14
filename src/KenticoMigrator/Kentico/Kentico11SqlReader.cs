@@ -37,32 +37,35 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
     {
         await using var connection = await OpenAsync(ct);
 
-        var version = await ReadVersionAsync(connection, ct);
-        var site = await ReadSingleSiteAsync(connection, ct);
+        var site = await ReadScopeAsync(connection, ct);
+        var version = site.Version;
 
         var classes = await ReadClassesAsync(connection, unlinkedRowClasses, ct);
         var templates = await ReadTemplateOrdersAsync(connection, ct);
         var skus = await ReadSkusAsync(connection, ct);
-        var coupled = await ReadCoupledRowsAsync(connection, classes.Values.Where(c => c.IsUsedByNodes), ct);
 
+        // Every coupled table is read once; documents and unlinked rows both use these rows.
+        var coupled = await ReadCoupledRowsAsync(connection, classes.Values, ct);
+
+        // Linked nodes are returned too (without content); a node that is not linked must have a document.
         var nodes = (await connection.QueryAsync<NodeRow>(new CommandDefinition(
             """
-            SELECT n.NodeID, n.NodeGUID, n.NodeParentID, n.NodeClassID, n.NodeAlias, n.NodeAliasPath, n.NodeOrder, n.NodeSKUID,
+            SELECT n.NodeID, n.NodeGUID, n.NodeParentID, n.NodeClassID, n.NodeName, n.NodeAlias, n.NodeAliasPath, n.NodeOrder, n.NodeSKUID,
+                   n.NodeLinkedNodeID,
                    d.DocumentID, d.DocumentName, d.DocumentForeignKeyValue, d.DocumentPageTitle, d.DocumentPageDescription, d.DocumentPageKeyWords,
                    d.DocumentMenuItemHideInNavigation, d.DocumentShowInSiteMap, d.DocumentCanBePublished, d.DocumentPublishFrom,
                    d.DocumentPublishTo, d.DocumentCreatedWhen, d.DocumentModifiedWhen, d.DocumentUrlPath, d.DocumentExtensions,
                    d.DocumentContent, d.DocumentPageTemplateID
             FROM CMS_Tree n
-            JOIN CMS_Document d ON d.DocumentNodeID = n.NodeID
-            WHERE n.NodeSiteID = @SiteId AND n.NodeLinkedNodeID IS NULL
+            LEFT JOIN CMS_Document d ON d.DocumentNodeID = n.NodeID
+            WHERE n.NodeSiteID = @SiteId AND (n.NodeLinkedNodeID IS NOT NULL OR d.DocumentID IS NOT NULL)
             ORDER BY n.NodeLevel, n.NodeOrder, n.NodeID
             """,
             new { site.SiteId }, cancellationToken: ct))).ToList();
 
-        var now = _time.GetLocalNow().DateTime;
-        var documents = nodes.Select(node => ToDocument(node, classes, templates, skus, coupled, now)).ToList();
+        var documents = nodes.Select(node => ToDocument(node, classes, templates, skus, coupled)).ToList();
 
-        var unlinked = await ReadUnlinkedRowsAsync(connection, classes, unlinkedRowClasses, ct);
+        var unlinked = ReadUnlinkedRows(classes, coupled, nodes, unlinkedRowClasses);
         var pageTypes = classes.Values
             .Select(c => new SourcePageType(c.ClassName, c.TableName, c.IsCoupled, c.Fields))
             .OrderBy(t => t.ClassName, StringComparer.Ordinal)
@@ -81,8 +84,9 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
     public async Task<Stream> OpenAttachmentAsync(Guid attachmentGuid, CancellationToken ct)
     {
         await using var connection = await OpenAsync(ct);
+        // The GUID is expected to be unique; ORDER BY keeps the pick deterministic if a database ever repeats one.
         await using var command = new SqlCommand(
-            "SELECT AttachmentBinary FROM CMS_Attachment WHERE AttachmentGUID = @guid", connection);
+            "SELECT TOP 1 AttachmentBinary FROM CMS_Attachment WHERE AttachmentGUID = @guid ORDER BY AttachmentID", connection);
         command.Parameters.AddWithValue("@guid", attachmentGuid);
 
         await using var reader = await command.ExecuteReaderAsync(System.Data.CommandBehavior.SequentialAccess, ct);
@@ -110,7 +114,13 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         }
 
         // The library folder and path come from the database: keep them inside the media root.
-        var root = Path.GetFullPath(_mediaRoot);
+        // A rooted value would make Path.Combine drop the root, so it is rejected up front.
+        if (IsRooted(file.LibraryFolder) || IsRooted(file.FilePath))
+        {
+            throw new InvalidDataException($"Media file path '{file.LibraryFolder}/{file.FilePath}' must be relative.");
+        }
+
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_mediaRoot));
         var path = Path.GetFullPath(Path.Combine(root, file.LibraryFolder, file.FilePath));
         if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
         {
@@ -130,23 +140,37 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
     {
         await using var connection = await OpenAsync(ct);
 
+        // Same checks and the same scope as ReadAsync, so the counts match what the read returns.
+        var site = await ReadScopeAsync(connection, ct);
+        var args = new { site.SiteId };
+
         var perClass = await connection.QueryAsync<(string ClassName, int Count)>(new CommandDefinition(
             """
             SELECT c.ClassName, COUNT(*)
             FROM CMS_Tree n
-            JOIN CMS_Document d ON d.DocumentNodeID = n.NodeID
             JOIN CMS_Class c ON c.ClassID = n.NodeClassID
-            WHERE n.NodeLinkedNodeID IS NULL
+            LEFT JOIN CMS_Document d ON d.DocumentNodeID = n.NodeID
+            WHERE n.NodeSiteID = @SiteId AND (n.NodeLinkedNodeID IS NOT NULL OR d.DocumentID IS NOT NULL)
             GROUP BY c.ClassName
-            """, cancellationToken: ct));
+            """, args, cancellationToken: ct));
 
         var attachments = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
-            "SELECT COUNT(*) FROM CMS_Attachment WHERE AttachmentDocumentID IS NOT NULL", cancellationToken: ct));
+            """
+            SELECT COUNT(*)
+            FROM CMS_Attachment a
+            JOIN CMS_Document d ON d.DocumentID = a.AttachmentDocumentID
+            JOIN CMS_Tree n ON n.NodeID = d.DocumentNodeID
+            WHERE n.NodeSiteID = @SiteId AND n.NodeLinkedNodeID IS NULL
+            """, args, cancellationToken: ct));
         var mediaFiles = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
-            "SELECT COUNT(*) FROM Media_File", cancellationToken: ct));
-
+            """
+            SELECT COUNT(*) FROM Media_File f JOIN Media_Library l ON l.LibraryID = f.FileLibraryID WHERE l.LibrarySiteID = @SiteId
+            """, args, cancellationToken: ct));
         var aliases = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
-            "SELECT COUNT(*) FROM CMS_DocumentAlias", cancellationToken: ct));
+            """
+            SELECT COUNT(*) FROM CMS_DocumentAlias a JOIN CMS_Tree n ON n.NodeID = a.AliasNodeID
+            WHERE n.NodeSiteID = @SiteId AND n.NodeLinkedNodeID IS NULL
+            """, args, cancellationToken: ct));
 
         return new SourceCounts(perClass.ToDictionary(r => r.ClassName, r => r.Count), attachments, mediaFiles, aliases);
     }
@@ -180,8 +204,15 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         return version;
     }
 
-    private static async Task<(int SiteId, string SiteName)> ReadSingleSiteAsync(SqlConnection connection, CancellationToken ct)
+    /// <summary>
+    /// Version check and the single-site, single-culture check (the culture is the set of distinct
+    /// <c>DocumentCulture</c> values; the <c>CMSDefaultCultureCode</c> setting is not used).
+    /// Both <see cref="ReadAsync"/> and <see cref="CountAsync"/> start here.
+    /// </summary>
+    private static async Task<SiteScope> ReadScopeAsync(SqlConnection connection, CancellationToken ct)
     {
+        var version = await ReadVersionAsync(connection, ct);
+
         var sites = (await connection.QueryAsync<(int SiteId, string SiteName)>(new CommandDefinition(
             "SELECT SiteID, SiteName FROM CMS_Site ORDER BY SiteID", cancellationToken: ct))).ToList();
         var cultures = (await connection.QueryAsync<string>(new CommandDefinition(
@@ -193,8 +224,11 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
                 $"Only one site and one culture are supported; found {sites.Count} site(s) and {cultures.Count} culture(s).");
         }
 
-        return sites[0];
+        return new SiteScope(version, sites[0].SiteId, sites[0].SiteName);
     }
+
+    private static bool IsRooted(string path) =>
+        Path.IsPathRooted(path) || path.StartsWith('/') || path.StartsWith('\\');
 
     /// <summary>Page types used by at least one node, plus those named in the profile.</summary>
     private static async Task<Dictionary<int, ClassInfo>> ReadClassesAsync(
@@ -208,26 +242,43 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
             WHERE c.{DocumentPageTypeFlag} = 1
             """, cancellationToken: ct));
 
+        var all = rows.ToList();
+
+        // A class named in the profile must exist and have a table, otherwise its rows cannot be read.
+        foreach (var name in unlinkedRowClasses)
+        {
+            var match = all.FirstOrDefault(r => r.ClassName.Equals(name, StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidDataException($"Page type '{name}' (unlinked rows in the profile) was not found in the Kentico database.");
+            if (!match.ClassIsCoupledClass || string.IsNullOrWhiteSpace(match.ClassTableName))
+            {
+                throw new InvalidDataException($"Page type '{name}' (unlinked rows in the profile) has no coupled table.");
+            }
+        }
+
         var wanted = new HashSet<string>(unlinkedRowClasses, StringComparer.OrdinalIgnoreCase);
-        return rows
+        return all
             .Where(r => r.IsUsedByNodes || wanted.Contains(r.ClassName))
             .ToDictionary(
                 r => r.ClassID,
-                r => new ClassInfo(
-                    r.ClassID,
-                    r.ClassName,
-                    r.ClassTableName,
-                    r.ClassIsCoupledClass && !string.IsNullOrWhiteSpace(r.ClassTableName),
-                    FormDefinition.Parse(r.ClassFormDefinition),
-                    FormDefinition.PrimaryKeyColumn(r.ClassFormDefinition),
-                    r.IsUsedByNodes));
+                r =>
+                {
+                    var form = FormDefinition.ParseForm(r.ClassFormDefinition);
+                    return new ClassInfo(
+                        r.ClassID,
+                        r.ClassName,
+                        r.ClassTableName,
+                        r.ClassIsCoupledClass && !string.IsNullOrWhiteSpace(r.ClassTableName),
+                        form.Fields,
+                        form.PrimaryKey,
+                        r.IsUsedByNodes);
+                });
     }
 
     private static async Task<Dictionary<int, IReadOnlyList<string>>> ReadTemplateOrdersAsync(SqlConnection connection, CancellationToken ct)
     {
         var rows = await connection.QueryAsync<(int PageTemplateID, string? PageTemplateWebParts)>(new CommandDefinition(
             "SELECT PageTemplateID, PageTemplateWebParts FROM CMS_PageTemplate", cancellationToken: ct));
-        return rows.ToDictionary(r => r.PageTemplateID, r => EditableRegions.TemplateOrder(r.PageTemplateWebParts));
+        return rows.ToDictionary(r => r.PageTemplateID, r => EditableRegions.TemplateOrder(r.PageTemplateWebParts, $"id {r.PageTemplateID}"));
     }
 
     private static async Task<Dictionary<int, IReadOnlyDictionary<string, object?>>> ReadSkusAsync(SqlConnection connection, CancellationToken ct)
@@ -256,39 +307,48 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
     private static async Task<Dictionary<int, IReadOnlyDictionary<string, object?>>> ReadRowsAsync(
         SqlConnection connection, ClassInfo info, CancellationToken ct)
     {
-        // Table and column names come from the database itself; allow plain identifiers only, then quote them.
+        // The table name comes from the database itself; allow a plain identifier only, then quote it.
         var table = QuoteIdentifier(info.TableName!);
-        var key = QuoteIdentifier(info.PrimaryKey ?? throw new InvalidDataException($"Page type {info.ClassName} has no primary key field."));
+        var keyColumn = info.PrimaryKey ?? throw new InvalidDataException($"Page type {info.ClassName} has no primary key field.");
         // Attachment group fields have no column in the table.
         var columns = info.Fields.Where(f => f.DataType != "docattachments").Select(f => f.Column).ToList();
-        var select = string.Join(", ", columns.Select(QuoteIdentifier).Prepend(key));
 
-        var rows = await connection.QueryAsync(new CommandDefinition($"SELECT {select} FROM {table}", cancellationToken: ct));
+        var rows = await connection.QueryAsync(new CommandDefinition($"SELECT * FROM {table}", cancellationToken: ct));
 
         var map = new Dictionary<int, IReadOnlyDictionary<string, object?>>();
         foreach (var row in rows.Cast<IDictionary<string, object?>>())
         {
-            map[(int)row[info.PrimaryKey]!] = columns.ToDictionary(c => c, c => row[c]);
+            // SQL Server column names are case-insensitive, the form definition may spell them differently.
+            var lookup = new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase);
+            var id = (int)Column(info, lookup, keyColumn)!;
+            map[id] = columns.ToDictionary(c => c, c => Column(info, lookup, c));
         }
 
         return map;
     }
 
-    private static async Task<IReadOnlyDictionary<string, IReadOnlyList<SourceRow>>> ReadUnlinkedRowsAsync(
-        SqlConnection connection, Dictionary<int, ClassInfo> classes, IReadOnlyCollection<string> requested, CancellationToken ct)
+    private static object? Column(ClassInfo info, Dictionary<string, object?> row, string column) =>
+        row.TryGetValue(column, out var value)
+            ? value
+            : throw new InvalidDataException(
+                $"Page type {info.ClassName}: column '{column}' from the form definition is missing in table {info.TableName}.");
+
+    /// <summary>Rows of the requested classes that no document points at (rows were read once, with the documents).</summary>
+    private static IReadOnlyDictionary<string, IReadOnlyList<SourceRow>> ReadUnlinkedRows(
+        Dictionary<int, ClassInfo> classes,
+        Dictionary<int, Dictionary<int, IReadOnlyDictionary<string, object?>>> coupled,
+        List<NodeRow> nodes,
+        IReadOnlyCollection<string> requested)
     {
         var result = new Dictionary<string, IReadOnlyList<SourceRow>>(StringComparer.OrdinalIgnoreCase);
         foreach (var info in classes.Values.Where(c => c.IsCoupled && requested.Contains(c.ClassName, StringComparer.OrdinalIgnoreCase)))
         {
-            var linked = (await connection.QueryAsync<int>(new CommandDefinition(
-                """
-                SELECT d.DocumentForeignKeyValue FROM CMS_Document d
-                JOIN CMS_Tree n ON n.NodeID = d.DocumentNodeID
-                WHERE n.NodeClassID = @ClassId AND d.DocumentForeignKeyValue IS NOT NULL
-                """, new { info.ClassId }, cancellationToken: ct))).ToHashSet();
+            var linked = nodes
+                .Where(n => n.NodeClassID == info.ClassId && n.DocumentForeignKeyValue is not null)
+                .Select(n => n.DocumentForeignKeyValue!.Value)
+                .ToHashSet();
 
-            var rows = await ReadRowsAsync(connection, info, ct);
-            result[info.ClassName] = rows
+            result[info.ClassName] = coupled[info.ClassId]
                 .Where(r => !linked.Contains(r.Key))
                 .OrderBy(r => r.Key)
                 .Select(r => new SourceRow(r.Key, r.Value))
@@ -314,7 +374,11 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
             WHERE AttachmentDocumentID IS NOT NULL
             """, cancellationToken: ct));
 
-        var ownerByDocument = nodes.Select((n, i) => (Node: n, Document: documents[i])).ToDictionary(x => x.Node.DocumentID);
+        // Linked nodes own no attachments; the originals keep them.
+        var ownerByDocument = nodes
+            .Select((n, i) => (Node: n, Document: documents[i]))
+            .Where(x => x.Node.NodeLinkedNodeID is null && x.Node.DocumentID is not null)
+            .ToDictionary(x => x.Node.DocumentID!.Value);
         var result = new List<SourceAttachment>();
         foreach (var row in rows)
         {
@@ -401,40 +465,37 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         Dictionary<int, ClassInfo> classes,
         Dictionary<int, IReadOnlyList<string>> templates,
         Dictionary<int, IReadOnlyDictionary<string, object?>> skus,
-        Dictionary<int, Dictionary<int, IReadOnlyDictionary<string, object?>>> coupled,
-        DateTime now)
+        Dictionary<int, Dictionary<int, IReadOnlyDictionary<string, object?>>> coupled)
     {
         var info = classes[node.NodeClassID];
+        var isLinked = node.NodeLinkedNodeID is not null;
 
+        // A linked node carries no content of its own: no fields, regions or SKU.
         IReadOnlyDictionary<string, object?> fields = new Dictionary<string, object?>();
-        if (info.IsCoupled && node.DocumentForeignKeyValue is { } foreignKey
+        if (!isLinked && info.IsCoupled && node.DocumentForeignKeyValue is { } foreignKey
             && coupled.TryGetValue(info.ClassId, out var rows) && rows.TryGetValue(foreignKey, out var row))
         {
             fields = row;
         }
 
-        var order = node.DocumentPageTemplateID is { } templateId && templates.TryGetValue(templateId, out var o) ? o : [];
-        var sku = node.NodeSKUID is { } skuId && skus.TryGetValue(skuId, out var s) ? s : null;
-
-        // Research R5a: published only when allowed and inside the publish window.
-        var published = node.DocumentCanBePublished
-            && (node.DocumentPublishFrom is null || node.DocumentPublishFrom <= now)
-            && (node.DocumentPublishTo is null || node.DocumentPublishTo > now);
+        var order = !isLinked && node.DocumentPageTemplateID is { } templateId && templates.TryGetValue(templateId, out var o) ? o : [];
+        var sku = !isLinked && node.NodeSKUID is { } skuId && skus.TryGetValue(skuId, out var s) ? s : null;
+        var regions = isLinked ? [] : EditableRegions.Parse(node.DocumentContent, order, node.NodeAliasPath);
 
         return new SourceDocument(
             node.NodeGUID,
             node.NodeID,
             node.NodeParentID,
             info.ClassName,
-            node.DocumentName,
+            node.DocumentName ?? node.NodeName,
             node.NodeAlias,
             node.NodeAliasPath,
             node.NodeOrder ?? 0,
-            published,
+            PublishWindow.IsPublished(node.DocumentCanBePublished ?? false, node.DocumentPublishFrom, node.DocumentPublishTo, _time),
             node.DocumentPublishFrom,
             node.DocumentPublishTo,
-            node.DocumentMenuItemHideInNavigation,
-            node.DocumentShowInSiteMap,
+            node.DocumentMenuItemHideInNavigation ?? false,
+            node.DocumentShowInSiteMap ?? false,
             node.DocumentPageTitle,
             node.DocumentPageDescription,
             node.DocumentPageKeyWords,
@@ -443,8 +504,9 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
             node.DocumentUrlPath,
             node.DocumentExtensions,
             fields,
-            EditableRegions.Parse(node.DocumentContent, order),
-            sku);
+            regions,
+            sku,
+            node.NodeLinkedNodeID);
     }
 
     private static string QuoteIdentifier(string name)
@@ -504,24 +566,29 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         long FileSize,
         string? FileTitle);
 
+    private sealed record SiteScope(string Version, int SiteId, string SiteName);
+
+    // The document columns are nullable because a linked node may have no document row.
     private sealed record NodeRow(
         int NodeID,
         Guid NodeGUID,
         int? NodeParentID,
         int NodeClassID,
+        string NodeName,
         string NodeAlias,
         string NodeAliasPath,
         int? NodeOrder,
         int? NodeSKUID,
-        int DocumentID,
-        string DocumentName,
+        int? NodeLinkedNodeID,
+        int? DocumentID,
+        string? DocumentName,
         int? DocumentForeignKeyValue,
         string? DocumentPageTitle,
         string? DocumentPageDescription,
         string? DocumentPageKeyWords,
-        bool DocumentMenuItemHideInNavigation,
-        bool DocumentShowInSiteMap,
-        bool DocumentCanBePublished,
+        bool? DocumentMenuItemHideInNavigation,
+        bool? DocumentShowInSiteMap,
+        bool? DocumentCanBePublished,
         DateTime? DocumentPublishFrom,
         DateTime? DocumentPublishTo,
         DateTime? DocumentCreatedWhen,

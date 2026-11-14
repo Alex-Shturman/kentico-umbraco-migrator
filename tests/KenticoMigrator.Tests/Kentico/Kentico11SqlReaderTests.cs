@@ -23,7 +23,7 @@ public sealed class Kentico11SqlReaderTests
             {
                 ["CMS.Root"] = 1,
                 ["CMS.Folder"] = 3,
-                ["CMS.MenuItem"] = 11,
+                ["CMS.MenuItem"] = 12,
                 ["CMS.Article"] = 3,
                 ["CMS.File"] = 2,
                 ["DEMO.Brand"] = 6,
@@ -39,7 +39,7 @@ public sealed class Kentico11SqlReaderTests
 
         Assert.Equal("KayakShop", site.SiteName);
         Assert.StartsWith("11.", site.KenticoVersion);
-        Assert.Equal(28, site.Documents.Count);
+        Assert.Equal(29, site.Documents.Count);
 
         var root = Assert.Single(site.Documents, d => d.ClassName == "CMS.Root");
         Assert.Null(root.ParentNodeId);
@@ -107,7 +107,7 @@ public sealed class Kentico11SqlReaderTests
         Assert.Equal(new DateTime(2099, 1, 1), scheduled.PublishFrom);
 
         Assert.True(site.Documents.Single(d => d.AliasPath == "/Home").IsPublished);
-        Assert.Equal(25, site.Documents.Count(d => d.IsPublished));
+        Assert.Equal(26, site.Documents.Count(d => d.IsPublished));
     }
 
     [IntegrationFact]
@@ -142,6 +142,54 @@ public sealed class Kentico11SqlReaderTests
         Assert.Equal("Sea Spirit", brand.Fields["Name"]);
         Assert.Equal("Sea-Spirit", brand.NodeAlias);
         Assert.Equal(5, brand.Fields["Order"]);
+    }
+
+    [IntegrationFact]
+    public async Task Linked_node_is_returned_with_linked_node_id()
+    {
+        var site = await ReadSiteAsync();
+
+        var about = site.Documents.Single(d => d.AliasPath == "/About");
+        var link = site.Documents.Single(d => d.AliasPath == "/Catalog/About-Link");
+
+        Assert.Equal(about.NodeId, link.LinkedNodeId);
+        Assert.Null(about.LinkedNodeId);
+        Assert.Equal("CMS.MenuItem", link.ClassName);
+        Assert.Empty(link.Fields);
+        Assert.Empty(link.Regions);
+        Assert.Null(link.Sku);
+        Assert.Equal(1, site.Documents.Count(d => d.LinkedNodeId is not null));
+        Assert.DoesNotContain(site.Attachments, a => a.NodeId == link.NodeId);
+    }
+
+    [IntegrationFact]
+    public async Task Counts_match_what_read_returns()
+    {
+        var reader = CreateReader();
+        var site = await reader.ReadAsync([], CancellationToken.None);
+        var counts = await reader.CountAsync(CancellationToken.None);
+
+        var fromRead = site.Documents.GroupBy(d => d.ClassName).ToDictionary(g => g.Key, g => g.Count());
+        Assert.Equal(fromRead.OrderBy(p => p.Key), counts.DocumentsByClass.OrderBy(p => p.Key));
+        Assert.Equal(site.Attachments.Count, counts.Attachments);
+        Assert.Equal(site.MediaFiles.Count, counts.MediaFiles);
+        Assert.Equal(site.Aliases.Count, counts.Aliases);
+    }
+
+    [IntegrationFact]
+    public async Task Unknown_unlinked_class_is_rejected()
+    {
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(() => ReadSiteAsync("DEMO.NoSuchType"));
+
+        Assert.Contains("DEMO.NoSuchType", ex.Message);
+    }
+
+    [IntegrationFact]
+    public async Task Unlinked_class_without_a_table_is_rejected()
+    {
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(() => ReadSiteAsync("CMS.Folder"));
+
+        Assert.Contains("CMS.Folder", ex.Message);
     }
 
     [IntegrationFact]
