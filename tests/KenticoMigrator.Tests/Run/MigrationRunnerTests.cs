@@ -102,6 +102,119 @@ public sealed class MigrationRunnerTests : IDisposable
         Assert.Equal(4, drop.GetProperty("after").GetInt32());
     }
 
+    /// <summary>A target whose first snapshot throws like an API refusal.</summary>
+    private sealed class FailingTree : ITargetTreeClient
+    {
+        public Task<IReadOnlyList<TargetTreeNode>> GetDocumentChildrenAsync(Guid? parentKey, CancellationToken ct) =>
+            throw new UmbracoApiException(HttpStatusCode.BadGateway, "Bad gateway", null);
+
+        public Task<int> CountMediaAsync(CancellationToken ct) => Task.FromResult(0);
+
+        public Task<int> CountRedirectsAsync(CancellationToken ct) => Task.FromResult(0);
+    }
+
+    /// <summary>A target whose snapshots come from a script, and where a snapshot can fail from a given number on.</summary>
+    private sealed class ScriptedTreeFailingFrom(int failFromSnapshot, params int[] documentsPerSnapshot) : ITargetTreeClient
+    {
+        private readonly ScriptedTree _inner = new(documentsPerSnapshot);
+        private int _snapshot = -1;
+
+        public Task<IReadOnlyList<TargetTreeNode>> GetDocumentChildrenAsync(Guid? parentKey, CancellationToken ct)
+        {
+            if (parentKey is null && ++_snapshot >= failFromSnapshot)
+            {
+                throw new UmbracoApiException(HttpStatusCode.BadGateway, "Bad gateway", null);
+            }
+
+            return _inner.GetDocumentChildrenAsync(parentKey, ct);
+        }
+
+        public Task<int> CountMediaAsync(CancellationToken ct) => Task.FromResult(0);
+
+        public Task<int> CountRedirectsAsync(CancellationToken ct) => Task.FromResult(0);
+    }
+
+    // Lets the probe through and fails everything after it, like a rejected token in the middle of a run.
+    private static FakeUmbracoApi ApiThatFailsAfterTheProbe()
+    {
+        var api = NewApi();
+        api.Failure = c => c.Path.StartsWith("/tree/document/root", StringComparison.Ordinal) ? null : new UmbracoAuthException("The token was rejected.");
+        return api;
+    }
+
+    [Fact]
+    public async Task Failure_in_the_read_phase_still_writes_a_report_with_exit_code_2()
+    {
+        var api = NewApi();
+        var reader = Reader();
+        reader.FailOnCountCall = 0;
+
+        var exit = await Runner(reader, api).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.ConfigurationOrPlanError, exit);
+        Assert.Empty(api.Writes);
+        var report = ReadReport();
+        Assert.Equal(2, report.GetProperty("exitCode").GetInt32());
+        var issue = Assert.Single(report.GetProperty("issues").EnumerateArray());
+        Assert.Equal("error", issue.GetProperty("severity").GetString());
+        Assert.Contains("InvalidOperationException", issue.GetProperty("message").GetString()); // type only, never the message
+        Assert.DoesNotContain("The source went away", File.ReadAllText(Path.Combine(_runDir, "report.json")));
+        Assert.True(File.Exists(Path.Combine(_runDir, "report.md")));
+    }
+
+    [Fact]
+    public async Task Failure_in_the_first_snapshot_still_writes_a_report_with_exit_code_2()
+    {
+        var api = NewApi();
+
+        var exit = await Runner(Reader(), api, new FailingTree()).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.ConfigurationOrPlanError, exit);
+        Assert.Empty(api.Writes);
+        var report = ReadReport();
+        Assert.Equal(2, report.GetProperty("exitCode").GetInt32());
+        var issue = Assert.Single(report.GetProperty("issues").EnumerateArray());
+        Assert.Contains("HTTP 502 Bad gateway", issue.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task Run_that_throws_after_a_count_dropped_returns_3_after_a_second_snapshot()
+    {
+        var api = ApiThatFailsAfterTheProbe();
+
+        var exit = await Runner(Reader(), api, new ScriptedTree(5, 4)).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.CountDrop, exit);
+        var report = ReadReport();
+        Assert.Equal(3, report.GetProperty("exitCode").GetInt32());
+        Assert.Equal(5, Assert.Single(report.GetProperty("countDrops").EnumerateArray()).GetProperty("before").GetInt32());
+        Assert.Contains("The run stopped early", File.ReadAllText(Path.Combine(_runDir, "report.json")));
+    }
+
+    [Fact]
+    public async Task Run_that_throws_without_a_drop_returns_1_and_reports_the_second_snapshot()
+    {
+        var api = ApiThatFailsAfterTheProbe();
+
+        var exit = await Runner(Reader(), api, new ScriptedTree(5, 5)).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.ItemErrors, exit);
+        Assert.NotEqual(JsonValueKind.Null, ReadReport().GetProperty("targetCountsAfter").ValueKind);
+    }
+
+    [Fact]
+    public async Task Run_that_throws_and_cannot_take_the_second_snapshot_returns_1_and_says_so()
+    {
+        var api = ApiThatFailsAfterTheProbe();
+
+        var exit = await Runner(Reader(), api, new ScriptedTreeFailingFrom(1, 5)).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.ItemErrors, exit);
+        var report = ReadReport();
+        Assert.Equal(JsonValueKind.Null, report.GetProperty("targetCountsAfter").ValueKind);
+        Assert.Contains("second snapshot", File.ReadAllText(Path.Combine(_runDir, "report.json")));
+    }
+
     [Fact]
     public async Task Failed_item_gives_exit_code_1_and_run_finishes()
     {

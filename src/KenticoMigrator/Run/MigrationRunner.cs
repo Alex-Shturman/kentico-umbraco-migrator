@@ -49,12 +49,29 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         IReadOnlyList<RedirectSummary> redirectSummaries = [];
         IReadOnlyList<PlannedRedirect> plannedRedirects = [];
 
-        var (site, sourceBefore) = await Timed(timings, Phases.Read, async () =>
+        // What a report can say when the run ends before the plan exists (FR-026: every run writes a report).
+        SourceSite? readSite = null;
+        SourceCounts? readCounts = null;
+        MigrationPlan? builtPlan = null;
+
+        SourceSite site;
+        SourceCounts sourceBefore;
+        try
         {
-            var read = await reader.ReadAsync([.. request.Profile.UnlinkedRows.Select(r => r.KenticoClass)], ct).ConfigureAwait(false);
-            var counts = await reader.CountAsync(ct).ConfigureAwait(false);
-            return ((read, counts), $"{read.Documents.Count} pages, {read.Attachments.Count} attachments, {read.MediaFiles.Count} media files");
-        }).ConfigureAwait(false);
+            (site, sourceBefore) = await Timed(timings, Phases.Read, async () =>
+            {
+                var read = await reader.ReadAsync([.. request.Profile.UnlinkedRows.Select(r => r.KenticoClass)], ct).ConfigureAwait(false);
+                var counts = await reader.CountAsync(ct).ConfigureAwait(false);
+                return ((read, counts), $"{read.Documents.Count} pages, {read.Attachments.Count} attachments, {read.MediaFiles.Count} media files");
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            return FailEarly(Phases.Read, ex);
+        }
+
+        readSite = site;
+        readCounts = sourceBefore;
 
         var plan = await Timed(timings, Phases.Plan, () =>
         {
@@ -62,6 +79,18 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             var errors = built.Issues.Count(i => i.Severity == PlanSeverities.Error);
             return Task.FromResult((built, $"{built.Documents.Count} pages, {built.Skipped.Count} skipped, {errors} errors"));
         }).ConfigureAwait(false);
+        builtPlan = plan;
+
+        // Nothing was written yet: a failure in the read phase or the first snapshot is a run that never started (exit code 2).
+        // Only the exception type or API status goes into the text (ApiErrors), never a message that could carry content.
+        int FailEarly(string phase, Exception ex)
+        {
+            var reason = ex is OperationCanceledException && ct.IsCancellationRequested ? "cancelled" : ApiErrors.Describe(ex);
+            output.WriteLine($"{phase} failed: {reason}");
+            extraIssues.Add(new PlanIssue(PlanSeverities.Error, phase == Phases.Read ? "source" : "target", $"The {phase} phase failed: {reason}"));
+            Finish(ExitCodes.ConfigurationOrPlanError, [], [], null, null, [], null);
+            return ExitCodes.ConfigurationOrPlanError;
+        }
 
         void Finish(int exit, IReadOnlyList<ItemResult> items, IReadOnlyList<MissingInSource> missing,
             TargetCounts? targetBefore, TargetCounts? targetAfter, IReadOnlyList<CountDrop> drops, SourceCounts? sourceAfter)
@@ -71,19 +100,19 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
                 request.Command,
                 startedUtc,
                 total.Elapsed,
-                site.KenticoVersion,
-                sourceBefore,
+                readSite?.KenticoVersion ?? "unknown",
+                readCounts,
                 sourceAfter,
                 targetBefore,
                 targetAfter,
                 drops,
                 items,
-                plan.Skipped,
-                [.. plan.Issues, .. extraIssues],
+                builtPlan?.Skipped ?? [],
+                [.. builtPlan?.Issues ?? [], .. extraIssues],
                 links,
                 redirectSummaries,
                 missing,
-                [.. plan.Documents.Where(d => d.ScheduleNote is not null).Select(d => new ScheduleNote(d.Key, d.OldPath, d.ScheduleNote!))],
+                [.. builtPlan?.Documents.Where(d => d.ScheduleNote is not null).Select(d => new ScheduleNote(d.Key, d.OldPath, d.ScheduleNote!)) ?? []],
                 timings,
                 exit,
                 plannedRedirects);
@@ -121,11 +150,19 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         }
 
         var counter = tree ?? new UmbracoTargetClient(api!);
-        var before = await Timed(timings, Phases.Snapshot, async () =>
+        TargetCounts before;
+        try
         {
-            var counts = await TargetCounter.CountAsync(counter, ct).ConfigureAwait(false);
-            return (counts, Describe(counts));
-        }).ConfigureAwait(false);
+            before = await Timed(timings, Phases.Snapshot, async () =>
+            {
+                var counts = await TargetCounter.CountAsync(counter, ct).ConfigureAwait(false);
+                return (counts, Describe(counts));
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            return FailEarly(Phases.Snapshot, ex);
+        }
 
         // From here on something may have been written, so a failure ends the run with a report and exit code 1, not 2.
         var schemaResults = new List<ItemResult>();
@@ -228,6 +265,20 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             var reason = ex is OperationCanceledException && ct.IsCancellationRequested ? "cancelled" : ApiErrors.Describe(ex);
             output.WriteLine($"run stopped: {reason}");
             extraIssues.Add(new PlanIssue(PlanSeverities.Error, "target", $"The run stopped early: {reason}"));
+
+            // The writes before the failure may have lowered a count, so the guard still looks (exit code 3 wins over 1).
+            if (!preview && after is null && !ct.IsCancellationRequested)
+            {
+                try
+                {
+                    after = await TargetCounter.CountAsync(counter, ct).ConfigureAwait(false);
+                    drops = CountGuard.FindDrops(before, after);
+                }
+                catch (Exception second)
+                {
+                    extraIssues.Add(new PlanIssue(PlanSeverities.Warning, "target", $"The second snapshot could not be taken after the run stopped, so the count guard did not run: {ApiErrors.Describe(second)}"));
+                }
+            }
         }
 
         var items = schemaResults.Concat(mediaResults).Concat(documents).Concat(redirectFailures).ToList();

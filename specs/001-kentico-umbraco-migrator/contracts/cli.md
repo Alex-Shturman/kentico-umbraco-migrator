@@ -42,8 +42,8 @@ user secrets (project `KenticoMigrator`), then command-line `--Key=Value`.
 |---|---|
 | 0 | Success |
 | 1 | Finished, but one or more items failed |
-| 2 | Configuration, connection, version or plan error; nothing was written |
-| 3 | A target count dropped during the run; the run stopped |
+| 2 | Configuration, connection, version or plan error, or a failure in the read phase or the first snapshot; nothing was written. A report is still written, with an error issue (exception type or `HTTP <status> <title>` only) |
+| 3 | A target count dropped during the run (also when the run stopped with an exception after the first snapshot: the second snapshot is then taken on a best-effort basis and the guard runs; exit 3 wins over 1) |
 
 ## Console output
 
