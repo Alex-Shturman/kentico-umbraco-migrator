@@ -103,6 +103,7 @@ Back office: `https://localhost:44317/umbraco`. Swagger: `https://localhost:4431
 
 - URLs are stored percent-decoded, lower-cased and without a trailing slash, because Umbraco looks
   redirects up that way.
+- A route that already redirects to another document is reported in `failed` ("url already redirects to another document"); the existing row is left unchanged and no second row is added.
 - `GET` and `HEAD` requests ending in `.aspx` (outside `/umbraco`) are given a trailing slash by a
   middleware in `Program.cs`; without it they never reach the redirect finder.
 
