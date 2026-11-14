@@ -64,7 +64,7 @@ public sealed class PlanBuilderRobustnessTests
     public void Allowed_child_alias_that_is_not_mapped_is_plan_error()
     {
         var profile = SampleProfile();
-        var broken = profile with { Types = [profile.Types[0] with { AllowedChildren = ["contentPage", "ghostType", "folder"] }, .. profile.Types.Skip(1)] };
+        var broken = profile with { Types = [profile.Types[0] with { AllowedChildren = ["contentPage", "ghostType", "contentFolder"] }, .. profile.Types.Skip(1)] };
 
         var plan = PlanBuilder.Build(SampleSite(), broken);
 

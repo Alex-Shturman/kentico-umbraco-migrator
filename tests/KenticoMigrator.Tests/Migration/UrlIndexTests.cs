@@ -143,7 +143,7 @@ public sealed class UrlIndexTests
     {
         var index = IndexOf(
             Target(1, "/Home", ["/Home"]),
-            Target(2, "/Catalog", ["/Catalog"], type: "folder", parent: GuidFor(1)),
+            Target(2, "/Catalog", ["/Catalog"], type: "contentFolder", parent: GuidFor(1)),
             Target(3, "/Draft", ["/Draft", "/Draft.aspx"], publish: false, parent: GuidFor(1)),
             Target(4, "/Live", ["/Live"], parent: GuidFor(1)));
 

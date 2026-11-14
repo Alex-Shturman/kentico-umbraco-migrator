@@ -48,7 +48,7 @@ meta fields with their own `MetaTitle`/`MetaDescription`/`MetaKeywords`.
 | `PO.Make` | `brand` | none (10 brand rows without a node are created unpublished, decision Q5) |
 | `CMS.MenuItem` `/Products/*` | `productList` | `product` |
 | `PO.Product` | `product` | none |
-| `CMS.Folder`, and `CMS.MenuItem` containers without text (`/Listings`, `/Products`) | `folder` (no template) | any migrated type |
+| `CMS.Folder`, and `CMS.MenuItem` containers without text (`/Listings`, `/Products`) | `contentFolder` (no template; `folder` is taken by the built-in media type) | any migrated type |
 | `CMS.File` | not a document; becomes a **media item** | |
 | Folder `/settings` (new) | `settingsFolder` | the four lookup types below |
 | `PO.ListingCategory` | `listingCategory` | none |
@@ -169,7 +169,7 @@ Rules:
   node with the URL name `search-featured`. 65 brands keep their exact
   URL; 33 brand names contain spaces, which cannot be an Umbraco URL
   segment, so those get a redirect.
-- Kentico folders become a `folder` node without a template, so their
+- Kentico folders become a `contentFolder` node without a template, so their
   children keep their paths. A folder URL returns 404, as in Kentico.
 - Order: `NodeOrder` is kept.
 - Node names: `DocumentName`.

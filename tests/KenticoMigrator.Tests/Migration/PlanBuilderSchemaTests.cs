@@ -22,7 +22,7 @@ public sealed class PlanBuilderSchemaTests
             Assert.Single(plan.DocumentTypes, t => t.Alias == alias);
         }
 
-        Assert.Single(plan.DocumentTypes, t => t.Alias == "folder");
+        Assert.Single(plan.DocumentTypes, t => t.Alias == "contentFolder");
         Assert.Equal(Keys.Derived("doctype", "brand"), plan.DocumentTypes.Single(t => t.Alias == "brand").Key);
     }
 
@@ -52,7 +52,7 @@ public sealed class PlanBuilderSchemaTests
     {
         var plan = Build();
 
-        var folder = plan.DocumentTypes.Single(t => t.Alias == "folder");
+        var folder = plan.DocumentTypes.Single(t => t.Alias == "contentFolder");
         Assert.Null(folder.TemplateAlias);
         Assert.Contains("migrationComposition", folder.Compositions);
         Assert.Equal("migratedPage", plan.DocumentTypes.Single(t => t.Alias == "article").TemplateAlias);

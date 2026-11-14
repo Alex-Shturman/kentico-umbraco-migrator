@@ -16,7 +16,7 @@
       "targetAlias": "contentPage",
       "targetName": "Content page",
       "hasTemplate": true,
-      "allowedChildren": ["contentPage", "articleList", "folder"],
+      "allowedChildren": ["contentPage", "articleList", "contentFolder"],
       "fields": [
         { "source": "doc:DocumentName", "target": "title", "editor": "TextBox", "group": "Content" },
         { "source": "region:first", "target": "bodyText", "editor": "RichText", "group": "Content" },

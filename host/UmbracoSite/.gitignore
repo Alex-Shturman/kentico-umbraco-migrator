@@ -483,3 +483,6 @@ umbraco-package-schema.json
 
 # Media files
 /wwwroot/media/
+
+# Razor views written by the migrator (SchemaSync) through the Management API
+Views/migrated*.cshtml

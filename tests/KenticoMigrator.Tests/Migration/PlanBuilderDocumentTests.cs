@@ -31,7 +31,7 @@ public sealed class PlanBuilderDocumentTests
         var plan = Build();
 
         var folder = Find(plan, "/Catalog");
-        Assert.Equal("folder", folder.TypeAlias);
+        Assert.Equal("contentFolder", folder.TypeAlias);
         Assert.Equal(Find(plan, "/Catalog").Key, Find(plan, "/Catalog/Products").ParentKey);
         Assert.Equal(Find(plan, "/Catalog/Products").Key, Find(plan, "/Catalog/Products/Tandem").ParentKey);
     }
@@ -48,8 +48,8 @@ public sealed class PlanBuilderDocumentTests
 
         var homeType = plan.DocumentTypes.Single(t => t.Alias == home.TypeAlias);
         Assert.True(homeType.AllowedAtRoot);
-        Assert.Contains("folder", homeType.AllowedChildAliases);
-        var folderType = plan.DocumentTypes.Single(t => t.Alias == "folder");
+        Assert.Contains("contentFolder", homeType.AllowedChildAliases);
+        var folderType = plan.DocumentTypes.Single(t => t.Alias == "contentFolder");
         Assert.Contains("brandList", folderType.AllowedChildAliases);
     }
 

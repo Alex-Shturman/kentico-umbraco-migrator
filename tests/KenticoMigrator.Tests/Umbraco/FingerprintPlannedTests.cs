@@ -217,7 +217,7 @@ public sealed class FingerprintPlannedTests
             },
         };
         var plan = PlanBuilder.Build(site, SourceFactory.SampleProfile());
-        Assert.Contains(plan.Documents, d => d.TypeAlias == "folder");
+        Assert.Contains(plan.Documents, d => d.TypeAlias == "contentFolder");
 
         foreach (var doc in plan.Documents)
         {
