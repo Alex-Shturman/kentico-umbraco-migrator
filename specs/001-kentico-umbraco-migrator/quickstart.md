@@ -50,7 +50,7 @@ dotnet run --project src/KenticoMigrator -- migrate --profile profiles/sample.js
 ```
 
 Expected: exit code 0; the console shows `schema: 15 Created`, `media: 19 Created` (9 folders, 9 images and 1 file), `documents: 23 Created`,
-`redirects: 27 planned; 27 created, 0 existing, 0 failed` and `links: 8 rewritten, 1 external, 1 to the application,
+`redirects: 28 planned; 28 created, 0 existing, 0 failed` and `links: 8 rewritten, 1 external, 1 to the application,
 1 unresolved`. The site shows the sample pages with their images and files at `https://localhost:44317/media/<token>/<file>`:
 the host serves them from the Azurite `media` container (nothing is stored on the host's disk). The back office lists the 27
 redirects under "URL Redirect Management".
@@ -61,8 +61,8 @@ redirects under "URL Redirect Management".
 scripts/check-urls.sh https://localhost:44317 sample/expected-urls.txt
 ```
 
-Expected: every line prints `OK` and the summary says `25 OK, 0 FAIL` (`200` for kept paths and for `/Home`, which is served
-at its own URL segment, `301` to the right page for `.aspx`, aliases and the brand with a space in its name).
+Expected: every line prints `OK` and the summary says `26 OK, 0 FAIL` (`200` for kept paths and for `/Home`, which is served
+at its own URL segment, `301` to the right page for `.aspx`, aliases and the brand with a space in its name; `/Catalog` is an alias that is also the URL of a template-less folder, redirected by the host's `TemplateLessRedirectFinder`).
 
 ## 6. Re-run and editor protection
 

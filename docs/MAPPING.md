@@ -174,8 +174,14 @@ Rules:
 - Kentico folders become a `contentFolder` node without a template, so their
   children keep their paths. A folder URL returns 404, as in Kentico. A fixed
   alias whose path equals such a folder (the old `/products` alias of
-  `/Products/Home`) cannot work: Umbraco finds the folder, answers 404 and never
-  reaches the redirect finder (follow-up T064).
+  `/Products/Home`) would also answer 404, because Umbraco finds the folder and
+  never reaches the redirect finder. Decision (T064): the redirect is registered as
+  usual, the plan lists a warning for the colliding page, and the host's
+  `TemplateLessRedirectFinder` (runs before the URL finder) answers with the
+  registered redirect, only when the page found has no template and a redirect exists
+  for that path. Folders without such a redirect still answer 404. Chosen over giving
+  folders a template because that would turn all 19 folder and template-less 404
+  answers into 200 pages and show the hidden `settings` folder.
 - Characters that Umbraco removes from a URL segment (verified: parentheses and a
   dash between spaces) change the URL of the page; the old path is redirected
   (reason `url-path`).

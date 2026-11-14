@@ -40,10 +40,13 @@
 /brand-search/Sea%20Spirit 301 /catalog/brands/sea-spirit/
 /brand-search/Aquila 301 /catalog/brands/aquila/
 
-# Excluded application page, wildcard route, folder without template and pages that are not published
+# Alias that is also the URL of a template-less folder: Umbraco alone answers 404, the host's TemplateLessRedirectFinder redirects (T064)
+/Catalog 301 /catalog/brands/
+
+# Excluded application page, wildcard route and pages that are not published
 /Account/Profile 404 /Account/Profile
 /some-title-i123 404 /some-title-i123
-/Catalog 404 /Catalog
 /Draft-Guide 404 /Draft-Guide
 /Old-Offer 404 /Old-Offer
 /Spring-Sale 404 /Spring-Sale
+/Downloads 404 /Downloads

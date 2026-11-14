@@ -37,7 +37,7 @@ Other counts:
 | Attachment history rows (`CMS_AttachmentHistory`, must be ignored) | 1 |
 | Media files (`Media_File`) | 4 (3 on disk, 1 missing) |
 | Links (`href=` in page content and article text) | 12 |
-| Document aliases (`CMS_DocumentAlias`) | 3 (1 of them a wildcard) |
+| Document aliases (`CMS_DocumentAlias`) | 4 (1 of them a wildcard; `/catalog` is the URL of the folder `/Catalog`) |
 
 Pages worth knowing:
 

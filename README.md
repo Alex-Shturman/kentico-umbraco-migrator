@@ -82,7 +82,7 @@ the host setup is in [host/README.md](host/README.md) and the sample in [sample/
    the host's client secret) with `dotnet user-secrets --project src/KenticoMigrator set ...`, then
    `dotnet run --project src/KenticoMigrator -- plan --profile profiles/sample.json`. Nothing is written to Umbraco.
 5. **Migrate.** `dotnet run --project src/KenticoMigrator -- migrate --profile profiles/sample.json`.
-6. **Check the old URLs.** `scripts/check-urls.sh https://localhost:44317 sample/expected-urls.txt` prints `25 OK, 0 FAIL`.
+6. **Check the old URLs.** `scripts/check-urls.sh https://localhost:44317 sample/expected-urls.txt` prints `26 OK, 0 FAIL`.
 7. **Run again.** The same `migrate` command reports 0 created and 0 updated. Edit a page title in the back office and run it
    again: the page is listed as edited and left alone; add `--overwrite-edited` to write it again.
 

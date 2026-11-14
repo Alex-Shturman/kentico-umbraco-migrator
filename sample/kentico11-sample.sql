@@ -507,11 +507,14 @@ GO
 
 -- /contact repeats the page's own path in lower case (the old links used both); /visit is a short alias.
 -- The third alias is a wildcard route on the excluded application page (it must be reported, not planned).
+-- The fourth alias, /catalog, is the URL of the template-less folder /Catalog: the plan warns and the host's
+-- TemplateLessRedirectFinder makes the redirect to the brand list work (T064).
 SET IDENTITY_INSERT CMS_DocumentAlias ON;
 INSERT INTO CMS_DocumentAlias (AliasID, AliasNodeID, AliasCulture, AliasURLPath, AliasExtensions, AliasWildcardRule, AliasPriority, AliasGUID, AliasLastModified, AliasSiteID) VALUES
 (1, 5,  N'en-US', N'/contact',         NULL, NULL,               NULL, 'a11a5000-0000-4000-8000-000000000001', '2018-11-06T10:00:00', 1),
 (2, 5,  N'en-US', N'/visit',           NULL, NULL,               NULL, 'a11a5000-0000-4000-8000-000000000002', '2018-11-06T10:00:00', 1),
-(3, 22, N'en-US', N'/{title}-i{ID}',   NULL, N'/{title}-i{ID}',  1,    'a11a5000-0000-4000-8000-000000000003', '2018-11-06T10:00:00', 1);
+(3, 22, N'en-US', N'/{title}-i{ID}',   NULL, N'/{title}-i{ID}',  1,    'a11a5000-0000-4000-8000-000000000003', '2018-11-06T10:00:00', 1),
+(4, 11, N'en-US', N'/catalog',         NULL, NULL,               NULL, 'a11a5000-0000-4000-8000-000000000004', '2018-11-06T10:00:00', 1);
 SET IDENTITY_INSERT CMS_DocumentAlias OFF;
 
 -- A document whose URL path was set by hand (URL path override).

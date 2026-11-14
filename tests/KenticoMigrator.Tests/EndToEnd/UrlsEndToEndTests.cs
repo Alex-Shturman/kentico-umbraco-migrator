@@ -44,6 +44,17 @@ public sealed class UrlsEndToEndTests
     }
 
     [Fact]
+    public async Task Alias_at_the_url_of_a_template_less_folder_is_a_plan_warning()
+    {
+        using var host = EndToEndHost.Connect();
+
+        var run = await host.RunAsync(CliArguments.Migrate, ct: Ct);
+
+        Assert.Equal(ExitCodes.Success, run.ExitCode);
+        Assert.Contains("/Catalog/Brands: An old URL of this page is the URL of '/Catalog'", File.ReadAllText(Path.Combine(run.RunDir, "report.md")));
+    }
+
+    [Fact]
     public async Task Redirects_are_listed_in_the_back_office_and_not_duplicated_by_a_second_run()
     {
         using var host = EndToEndHost.Connect();

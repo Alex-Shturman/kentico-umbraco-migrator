@@ -230,7 +230,8 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
                     return (0, "page URLs could not be read, no redirects planned");
                 }
 
-                var planned = RedirectPlanner.Plan(plan.Documents, urls);
+                var templateLess = plan.DocumentTypes.Where(t => t.TemplateAlias is null && !t.IsElementOrComposition).Select(t => t.Alias).ToHashSet(StringComparer.Ordinal);
+                var planned = RedirectPlanner.Plan(plan.Documents, urls, templateLess);
                 extraIssues.AddRange(planned.Warnings);
                 plannedRedirects = planned.Redirects;
                 var registered = await new RedirectSync(api!).RegisterAsync(planned.Redirects, preview, ct).ConfigureAwait(false);

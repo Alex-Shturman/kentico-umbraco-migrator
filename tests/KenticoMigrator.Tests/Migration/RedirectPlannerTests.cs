@@ -121,4 +121,46 @@ public sealed class RedirectPlannerTests
         Assert.Single(plan.Redirects);
         Assert.Empty(plan.Warnings);
     }
+
+    [Fact]
+    public void Old_url_that_is_the_url_of_a_template_less_page_is_a_warning_by_path_and_key()
+    {
+        // The old alias /products and a folder (no template) that really lives at /products.
+        // Umbraco reports no URL for a page without a template ("cannot be routed"), so the folder's route comes from its child.
+        var folder = Target(1, "/Products", ["/Products"]) with { TypeAlias = "contentFolder", Name = "Products" };
+        var landing = Target(2, "/Products/Home", ["/Products/Home", "/products"]) with { ParentKey = GuidFor(1) };
+
+        var plan = RedirectPlanner.Plan([folder, landing], Actual((2, "/products/home/")), new HashSet<string> { "contentFolder" });
+
+        Assert.Equal("/products", Assert.Single(plan.Redirects).OldUrl); // still registered: the host finder uses it
+        var warning = Assert.Single(plan.Warnings);
+        Assert.Equal(PlanSeverities.Warning, warning.Severity);
+        Assert.Equal("/Products/Home", warning.OldPath);
+        Assert.Contains(GuidFor(1).ToString("D"), warning.Message);
+        Assert.Contains("no template", warning.Message);
+        Assert.DoesNotContain("/products", warning.Message); // no URL text (FR-028)
+    }
+
+    [Fact]
+    public void Old_url_of_a_page_with_a_template_is_not_a_template_collision()
+    {
+        var docs = new[] { Target(1, "/Products", ["/Products"]), Target(2, "/Products/Home", ["/Products/Home", "/products"]) with { ParentKey = GuidFor(1) } };
+
+        var plan = RedirectPlanner.Plan(docs, Actual((1, "/products/"), (2, "/products/home/")), new HashSet<string> { "contentFolder" });
+
+        Assert.DoesNotContain(plan.Warnings, w => w.Message.Contains("no template", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Folder_route_of_a_nested_folder_comes_from_its_deepest_routable_descendant()
+    {
+        var outer = Target(1, "/A", ["/A"]) with { TypeAlias = "contentFolder" };
+        var inner = Target(2, "/A/B", ["/A/B", "/a/b"]) with { TypeAlias = "contentFolder", ParentKey = GuidFor(1) };
+        var page = Target(3, "/A/B/C", ["/A/B/C", "/elsewhere"]) with { ParentKey = GuidFor(2) };
+        var alias = Target(4, "/D", ["/D", "/a/b"]);
+
+        var plan = RedirectPlanner.Plan([outer, inner, page, alias], Actual((3, "/a/b/c/"), (4, "/d/")), new HashSet<string> { "contentFolder" });
+
+        Assert.Equal("/D", Assert.Single(plan.Warnings).OldPath);
+    }
 }

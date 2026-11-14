@@ -9,13 +9,16 @@ public sealed record RedirectPlanResult(
 /// Plans redirects from the old URL forms of published documents to their actual Umbraco URLs (FR-023).
 /// A redirect is planned only when the old URL would not be served as is. Umbraco routing is case-insensitive
 /// (verified, research R10), so a difference in case alone needs no redirect. Pure: the actual URLs are read back
-/// from Umbraco by the caller.
+/// from Umbraco by the caller. An old URL that is the actual URL of a page without a template (a folder) is planned like any
+/// other and reported as a warning: Umbraco answers 404 for such a page before its redirect finder runs, so the redirect only
+/// works with the host's <c>TemplateLessRedirectFinder</c>.
 /// </summary>
 public static class RedirectPlanner
 {
     public static RedirectPlanResult Plan(
         IReadOnlyList<TargetDocument> documents,
-        IReadOnlyDictionary<Guid, string> actualUrls)
+        IReadOnlyDictionary<Guid, string> actualUrls,
+        IReadOnlySet<string>? templateLessTypeAliases = null)
     {
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(actualUrls);
@@ -23,6 +26,7 @@ public static class RedirectPlanner
         var redirects = new List<PlannedRedirect>();
         var warnings = new List<PlanIssue>();
         var claimedBy = new Dictionary<string, TargetDocument>(StringComparer.Ordinal);
+        var templateLess = TemplateLessRoutes(documents, actualUrls, templateLessTypeAliases);
 
         foreach (var doc in ClaimOrder.Sort(documents.Where(d => d.Publish && actualUrls.ContainsKey(d.Key))))
         {
@@ -48,12 +52,70 @@ public static class RedirectPlanner
                     continue;
                 }
 
+                if (templateLess.TryGetValue(oldRoute, out var blocker) && blocker.Key != doc.Key)
+                {
+                    warnings.Add(new PlanIssue(
+                        PlanSeverities.Warning,
+                        doc.OldPath,
+                        $"An old URL of this page is the URL of '{blocker.OldPath}' (key {blocker.Key}), a page with no template: Umbraco answers 404 there before redirects are tried. The redirect is registered and works only with the host's TemplateLessRedirectFinder."));
+                }
+
                 claimedBy.Add(oldRoute, doc);
                 redirects.Add(new PlannedRedirect(oldUrl, doc.Key, actual, ReasonFor(doc, oldUrl, oldRoute, actualRoute)));
             }
         }
 
         return new RedirectPlanResult(redirects, warnings);
+    }
+
+    // Umbraco reports no URL ("cannot be routed") for a page without a template, so the route of such a published page is that of
+    // its nearest routable descendant minus the segments in between (the URL names of the pages are single segments).
+    private static Dictionary<string, TargetDocument> TemplateLessRoutes(
+        IReadOnlyList<TargetDocument> documents,
+        IReadOnlyDictionary<Guid, string> actualUrls,
+        IReadOnlySet<string>? templateLessTypeAliases)
+    {
+        var routes = new Dictionary<string, TargetDocument>(StringComparer.Ordinal);
+        if (templateLessTypeAliases is not { Count: > 0 })
+        {
+            return routes;
+        }
+
+        var children = documents.Where(d => d.ParentKey is not null).ToLookup(d => d.ParentKey!.Value);
+
+        // The route of a page, or null when it and everything below it is not routable.
+        string? RouteOf(TargetDocument doc, int depth)
+        {
+            if (actualUrls.TryGetValue(doc.Key, out var url))
+            {
+                return Route(url);
+            }
+
+            if (depth > documents.Count)
+            {
+                return null;
+            }
+
+            foreach (var child in children[doc.Key].Where(c => c.Publish))
+            {
+                if (RouteOf(child, depth + 1) is { } childRoute && childRoute.LastIndexOf('/') is var cut and > 0)
+                {
+                    return childRoute[..cut];
+                }
+            }
+
+            return null;
+        }
+
+        foreach (var page in ClaimOrder.Sort(documents.Where(d => d.Publish && templateLessTypeAliases.Contains(d.TypeAlias))))
+        {
+            if (RouteOf(page, 0) is { } route)
+            {
+                routes.TryAdd(route, page);
+            }
+        }
+
+        return routes;
     }
 
     // Comparison keeps ".aspx": Umbraco does not serve it, so "/About.aspx" is never the same URL as "/about".

@@ -106,6 +106,10 @@ Back office: `https://localhost:44317/umbraco`. Swagger: `https://localhost:4431
 - A route that already redirects to another document is reported in `failed` ("url already redirects to another document"); the existing row is left unchanged and no second row is added.
 - `GET` and `HEAD` requests ending in `.aspx` (outside `/umbraco`) are given a trailing slash by a
   middleware in `Program.cs`; without it they never reach the redirect finder.
+- `Migration/TemplateLessRedirectFinder.cs` (registered by `TemplateLessRedirectComposer`) runs before Umbraco's URL
+  finder. When the page found at the request path has no template (a migrated folder) and a redirect is registered for that
+  path, it answers with the redirect instead of Umbraco's 404. Without a registered redirect nothing changes. It is verified
+  by the `/Catalog` line of `sample/expected-urls.txt` and by `UrlsEndToEndTests`.
 
 The host has no test project. The endpoint rules (401 without a token, the 500 entry limit,
 idempotency, the `failed` reasons) are verified by this manual acceptance check, with the host
