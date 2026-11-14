@@ -20,19 +20,23 @@ public sealed class SchemaSync(IUmbracoApi api)
     private const string FolderIcon = "icon-folder";
     private const int FilterPageSize = 100;
 
+    private static readonly string[] TypeLevelEditorFields = ["icon", "description", "cleanup", "collection", "variesByCulture", "variesBySegment"];
+    private static readonly string[] PropertyLevelEditorFields = ["description", "validation", "appearance", "variesByCulture", "variesBySegment"];
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     /// <summary>
     /// Ensures data types, templates and document types (compositions first). With <paramref name="preview"/> nothing is
     /// written and the outcome is <c>WouldCreate</c>, <c>WouldUpdate</c> or <c>Unchanged</c>. Editor additions to a document
     /// type (properties, groups, allowed children, compositions) are kept; a template an editor changed is left alone
-    /// (<c>EditedSkipped</c>) unless <paramref name="overwriteEdited"/> is set.
+    /// (<c>EditedSkipped</c>) unless <paramref name="overwriteEdited"/> is set. Pass <paramref name="results"/> to keep what was
+    /// done when the run aborts: the list is filled as items are handled.
     /// </summary>
-    public async Task<IReadOnlyList<ItemResult>> EnsureAsync(MigrationPlan plan, bool preview, CancellationToken ct, bool overwriteEdited = false)
+    public async Task<IReadOnlyList<ItemResult>> EnsureAsync(MigrationPlan plan, bool preview, CancellationToken ct, bool overwriteEdited = false, List<ItemResult>? results = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
-        var results = new List<ItemResult>();
+        results ??= [];
         var dataTypeIds = await EnsureDataTypesAsync(plan, preview, results, ct).ConfigureAwait(false);
         await EnsureTemplatesAsync(plan, preview, overwriteEdited, results, ct).ConfigureAwait(false);
         await EnsureDocumentTypesAsync(plan, dataTypeIds, preview, results, ct).ConfigureAwait(false);
@@ -169,6 +173,14 @@ public sealed class SchemaSync(IUmbracoApi api)
         // The marker holds the hash of the body the tool wrote. A body that no longer hashes to it (or has no marker) was
         // changed by an editor; the tool leaves it alone unless it is told to overwrite.
         var (storedHash, currentBody) = SplitMarker(current["content"]?.GetValue<string>());
+        var legacy = false;
+        if (storedHash is null && KnownEarlierBodyHashes.Contains(ContentHash(currentBody)))
+        {
+            // The tool's own body from before markers existed: not an edit, and it gets its marker now.
+            storedHash = ContentHash(currentBody);
+            legacy = true;
+        }
+
         if (storedHash is null || storedHash != ContentHash(currentBody))
         {
             if (!overwriteEdited)
@@ -184,7 +196,8 @@ public sealed class SchemaSync(IUmbracoApi api)
             return Result(template.Key, ItemKinds.Template, template.Alias, preview ? ItemOutcome.WouldUpdate : ItemOutcome.EditedOverwritten);
         }
 
-        if (storedHash == plannedHash
+        if (!legacy
+            && storedHash == plannedHash
             && current["name"]?.GetValue<string>() == template.Name
             && current["alias"]?.GetValue<string>() == template.Alias)
         {
@@ -198,6 +211,15 @@ public sealed class SchemaSync(IUmbracoApi api)
 
         return Result(template.Key, ItemKinds.Template, template.Alias, preview ? ItemOutcome.WouldUpdate : ItemOutcome.Updated);
     }
+
+    // Bodies earlier versions of the tool wrote without a marker (sha256 of the normalised body of MigratedPage.cshtml before the
+    // marker was introduced, and of the two earlier MigratedLayout.cshtml versions). Such a template is the tool's own, not an edit.
+    private static readonly HashSet<string> KnownEarlierBodyHashes =
+    [
+        "50e5838dca66f12c97fbf28f6c71b62f9d1aca7d99b3bba80648acae33f1bc89",
+        "2ff65ec378f9445deb7e552b5c0689e7a9312d3f759c24cb9906b0e6518db10d",
+        "e3e3c7c0ce12eab0ac6bfa6a93dd39b013be62155088e4a10588bee5763cd3a1",
+    ];
 
     private const string MarkerPrefix = "@* migrator-fingerprint:";
     private const string MarkerSuffix = " *@";
@@ -396,7 +418,6 @@ public sealed class SchemaSync(IUmbracoApi api)
                     ["name"] = p["name"]?.GetValue<string>(),
                     ["dataType"] = p["dataType"]?["id"]?.GetValue<string>()?.ToLowerInvariant(),
                     ["group"] = p["container"]?["id"]?.GetValue<string>() is { } cid && containerNames.TryGetValue(cid, out var group) ? group : null,
-                    ["mandatory"] = p["validation"]?["mandatory"]?.GetValue<bool>() ?? false,
                 })]),
         };
         return shape.ToJsonString();
@@ -409,6 +430,15 @@ public sealed class SchemaSync(IUmbracoApi api)
     {
         var merged = (JsonObject)planned.DeepClone();
         merged["allowedAsRoot"] = (planned["allowedAsRoot"]?.GetValue<bool>() ?? false) || (current["allowedAsRoot"]?.GetValue<bool>() ?? false);
+
+        // Type-level settings the tool does not own stay as the editor left them.
+        foreach (var field in TypeLevelEditorFields)
+        {
+            if (current is JsonObject currentObject && currentObject.ContainsKey(field))
+            {
+                merged[field] = currentObject[field]?.DeepClone();
+            }
+        }
 
         var currentContainers = (current["containers"]?.AsArray() ?? []).OfType<JsonObject>().ToList();
         var plannedContainers = merged["containers"]!.AsArray();
@@ -442,38 +472,35 @@ public sealed class SchemaSync(IUmbracoApi api)
             if (existing?["id"]?.GetValue<string>() is { } propertyId)
             {
                 property["id"] = propertyId;
+                // The tool owns alias, name, data type and group; help text, validation and appearance stay as they are.
+                foreach (var field in PropertyLevelEditorFields.Where(existing.ContainsKey))
+                {
+                    property[field] = existing[field]?.DeepClone();
+                }
             }
         }
 
         var plannedAliases = properties.Select(p => p?["alias"]?.GetValue<string>()).ToHashSet();
-        var next = properties.Count;
         foreach (var extra in currentProperties.Where(p => !plannedAliases.Contains(p["alias"]?.GetValue<string>())))
         {
-            var clone = (JsonObject)extra.DeepClone();
-            clone["sortOrder"] = next++;
-            properties.Add(clone);
+            properties.Add(extra.DeepClone());
         }
 
-        AppendMissing(merged["allowedDocumentTypes"]!.AsArray(), current["allowedDocumentTypes"]?.AsArray(), a => a?["documentType"]?["id"]?.GetValue<string>(), numberSortOrder: true);
-        AppendMissing(merged["compositions"]!.AsArray(), current["compositions"]?.AsArray(), c => c?["documentType"]?["id"]?.GetValue<string>(), numberSortOrder: false);
-        AppendMissing(merged["allowedTemplates"]!.AsArray(), current["allowedTemplates"]?.AsArray(), t => t?["id"]?.GetValue<string>(), numberSortOrder: false);
+        AppendMissing(merged["allowedDocumentTypes"]!.AsArray(), current["allowedDocumentTypes"]?.AsArray(), a => a?["documentType"]?["id"]?.GetValue<string>());
+        AppendMissing(merged["compositions"]!.AsArray(), current["compositions"]?.AsArray(), c => c?["documentType"]?["id"]?.GetValue<string>());
+        AppendMissing(merged["allowedTemplates"]!.AsArray(), current["allowedTemplates"]?.AsArray(), t => t?["id"]?.GetValue<string>());
         return merged;
     }
 
-    private static void AppendMissing(JsonArray target, JsonArray? source, Func<JsonNode?, string?> idOf, bool numberSortOrder)
+    // Items of the target that the plan does not name are added unchanged, with the sort order they have.
+    private static void AppendMissing(JsonArray target, JsonArray? source, Func<JsonNode?, string?> idOf)
     {
         var known = target.Select(idOf).Where(i => i is not null).Select(i => i!.ToLowerInvariant()).ToHashSet();
         foreach (var item in source ?? [])
         {
             if (idOf(item) is { } id && known.Add(id.ToLowerInvariant()))
             {
-                var clone = item!.DeepClone();
-                if (numberSortOrder)
-                {
-                    clone["sortOrder"] = target.Count;
-                }
-
-                target.Add(clone);
+                target.Add(item!.DeepClone());
             }
         }
     }

@@ -1,0 +1,26 @@
+@using Umbraco.Cms.Web.Common.PublishedModels
+@using Umbraco.Extensions
+@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage
+@{
+    Layout = null;
+    var title = Model.Value<string>("metaTitle");
+    if (string.IsNullOrWhiteSpace(title)) { title = Model.Name; }
+    var description = Model.Value<string>("metaDescription");
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@title</title>
+    @if (!string.IsNullOrWhiteSpace(description))
+    {
+        <meta name="description" content="@description" />
+    }
+</head>
+<body>
+    <main>
+        @RenderBody()
+    </main>
+</body>
+</html>

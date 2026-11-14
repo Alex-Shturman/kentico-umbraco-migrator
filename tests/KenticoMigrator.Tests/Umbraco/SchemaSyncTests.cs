@@ -323,4 +323,84 @@ public sealed class SchemaSyncTests
         Assert.Equal(ItemOutcome.WouldUpdate, overwrite.Single(r => r.Key == MigratedPageKey).Outcome);
         Assert.Empty(api.Writes);
     }
+
+    [Fact]
+    public async Task Template_from_an_earlier_version_of_the_tool_is_not_an_edit_but_other_marker_less_content_is()
+    {
+        var api = NewApi();
+        var earlier = File.ReadAllText(RepoPaths.Combine("tests", "KenticoMigrator.Tests", "Fixtures", "templates", "MigratedLayout.earlier.cshtml"));
+        var layout = Plan.Templates.Single(t => t.Alias == "migratedLayout");
+        api.Seed("template", layout.Key, new JsonObject { ["name"] = layout.Name, ["alias"] = layout.Alias, ["content"] = earlier });
+        var page = Plan.Templates.Single(t => t.Alias == "migratedPage");
+        api.Seed("template", page.Key, new JsonObject { ["name"] = page.Name, ["alias"] = page.Alias, ["content"] = "<p>by hand</p>" });
+
+        var results = await new SchemaSync(api).EnsureAsync(Plan, preview: false, Ct);
+
+        Assert.Equal(ItemOutcome.Updated, results.Single(r => r.Key == layout.Key).Outcome);
+        Assert.Contains("migrator-fingerprint", api.Stored("template", layout.Key)!["content"]!.GetValue<string>());
+        Assert.Equal(ItemOutcome.EditedSkipped, results.Single(r => r.Key == page.Key).Outcome);
+    }
+
+    [Fact]
+    public async Task Type_level_fields_and_property_settings_an_editor_chose_are_kept()
+    {
+        var api = NewApi();
+        var sync = new SchemaSync(api);
+        await sync.EnsureAsync(Plan, preview: false, Ct);
+        var article = Plan.DocumentTypes.Single(t => t.Alias == "article");
+        var stored = api.Stored("document-type", article.Key)!;
+        stored["icon"] = "icon-custom";
+        stored["description"] = "Edited description";
+        stored["cleanup"] = new JsonObject { ["preventCleanup"] = true };
+        var body = stored["properties"]!.AsArray().Single(p => p!["alias"]!.GetValue<string>() == "bodyText")!;
+        body["description"] = "Help text";
+        body["validation"] = new JsonObject { ["mandatory"] = true, ["mandatoryMessage"] = "Needed" };
+        body["appearance"] = new JsonObject { ["labelOnTop"] = true };
+        api.Calls.Clear();
+
+        var quiet = await sync.EnsureAsync(Plan, preview: false, Ct);
+        Assert.All(quiet, r => Assert.Equal(ItemOutcome.Unchanged, r.Outcome));
+        Assert.Empty(api.Writes);
+
+        stored["name"] = "Tampered";
+        await sync.EnsureAsync(Plan, preview: false, Ct);
+
+        Assert.Equal("icon-custom", stored["icon"]!.GetValue<string>());
+        Assert.Equal("Edited description", stored["description"]!.GetValue<string>());
+        Assert.True(stored["cleanup"]!["preventCleanup"]!.GetValue<bool>());
+        var after = stored["properties"]!.AsArray().Single(p => p!["alias"]!.GetValue<string>() == "bodyText")!;
+        Assert.Equal("Help text", after["description"]!.GetValue<string>());
+        Assert.True(after["validation"]!["mandatory"]!.GetValue<bool>());
+        Assert.Equal("Needed", after["validation"]!["mandatoryMessage"]!.GetValue<string>());
+        Assert.True(after["appearance"]!["labelOnTop"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task Editor_extras_keep_their_sort_order()
+    {
+        var api = NewApi();
+        var sync = new SchemaSync(api);
+        await sync.EnsureAsync(Plan, preview: false, Ct);
+        var article = Plan.DocumentTypes.Single(t => t.Alias == "article");
+        AddEditorAdditions(api, article, Guid.NewGuid(), Guid.NewGuid());
+        api.Stored("document-type", article.Key)!["name"] = "Tampered";
+
+        await sync.EnsureAsync(Plan, preview: false, Ct);
+
+        var note = api.Stored("document-type", article.Key)!["properties"]!.AsArray().Single(p => p!["alias"]!.GetValue<string>() == "editorNote")!;
+        Assert.Equal(99, note["sortOrder"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task Results_sink_keeps_what_was_done_before_an_abort()
+    {
+        var api = NewApi();
+        api.Failure = c => c.Method == HttpMethod.Post && c.Path == "/document-type" ? new UmbracoAuthException("token rejected") : null;
+        var sink = new List<ItemResult>();
+
+        await Assert.ThrowsAsync<UmbracoAuthException>(() => new SchemaSync(api).EnsureAsync(Plan, preview: false, Ct, results: sink));
+
+        Assert.Contains(sink, r => r.Kind == ItemKinds.DataType && r.Outcome == ItemOutcome.Created);
+        Assert.Contains(sink, r => r.Kind == ItemKinds.Template && r.Outcome == ItemOutcome.Created);
+    }
 }
