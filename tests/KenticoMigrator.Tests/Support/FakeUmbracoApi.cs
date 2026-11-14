@@ -50,11 +50,8 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
     {
         item["id"] = id.ToString("D");
         Items(collection)[id] = item;
-        if (collection == "document")
-        {
-            _parents[id] = parent;
-            _order[id] = _nextOrder++;
-        }
+        _parents[id] = parent;
+        _order[id] = _nextOrder++;
     }
 
     public Task<JsonNode?> GetAsync(string path, CancellationToken ct)
@@ -161,7 +158,7 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
     {
         var skip = int.Parse(query.GetValueOrDefault("skip") ?? "0");
         var take = int.Parse(query.GetValueOrDefault("take") ?? "100");
-        var all = ChildrenOf(parent);
+        var all = ChildrenOf(parent).Where(k => Stored(kind, k) is not null).ToList();
         var items = new JsonArray();
         foreach (var key in all.Skip(skip).Take(take))
         {
@@ -172,6 +169,7 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
                 ["parent"] = parent is null ? null : new JsonObject { ["id"] = parent.Value.ToString("D") },
                 ["hasChildren"] = _parents.Values.Any(p => p == key),
                 ["documentType"] = doc["documentType"]?.DeepClone(),
+                ["mediaType"] = doc["mediaType"]?.DeepClone(),
                 ["variants"] = doc["variants"]?.DeepClone(),
             });
         }
