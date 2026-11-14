@@ -392,4 +392,20 @@ public sealed class DocumentSyncTests
         Assert.Equal([ItemOutcome.Failed, ItemOutcome.Created], results.Select(r => r.Outcome));
         Assert.DoesNotContain("secret", results[0].Error);
     }
+
+    [Fact]
+    public async Task Results_sink_keeps_the_pages_written_before_an_abort()
+    {
+        var posts = 0;
+        var api = new FakeUmbracoApi
+        {
+            Failure = c => c.Method == HttpMethod.Post && ++posts == 3 ? new UmbracoAuthException("token rejected") : null,
+        };
+        var sink = new List<ItemResult>();
+
+        await Assert.ThrowsAsync<UmbracoAuthException>(() =>
+            NewSync(api).SyncAsync([Doc(1, null, "A"), Doc(2, null, "B"), Doc(3, null, "C")], Options, Ct, sink));
+
+        Assert.Equal([ItemOutcome.Created, ItemOutcome.Created], sink.Select(r => r.Outcome));
+    }
 }

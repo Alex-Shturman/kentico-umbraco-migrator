@@ -7,6 +7,9 @@ internal sealed class FakeKenticoReader(SourceSite site, params SourceCounts[] c
 {
     public int CountCalls { get; private set; }
 
+    /// <summary>Throws from the n-th (0-based) count call when set.</summary>
+    public int? FailOnCountCall { get; set; }
+
     public Task<SourceSite> ReadAsync(IReadOnlyCollection<string> unlinkedRowClasses, CancellationToken ct) => Task.FromResult(site);
 
     public Task<Stream> OpenAttachmentAsync(Guid attachmentGuid, CancellationToken ct) => throw new NotSupportedException();
@@ -15,6 +18,11 @@ internal sealed class FakeKenticoReader(SourceSite site, params SourceCounts[] c
 
     public Task<SourceCounts> CountAsync(CancellationToken ct)
     {
+        if (FailOnCountCall == CountCalls)
+        {
+            throw new InvalidOperationException("The source went away.");
+        }
+
         var counts = countScript.Length == 0 ? Of(site) : countScript[Math.Min(CountCalls, countScript.Length - 1)];
         CountCalls++;
         return Task.FromResult(counts);

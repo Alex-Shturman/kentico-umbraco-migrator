@@ -301,4 +301,60 @@ public sealed class MigrationRunnerTests : IDisposable
         Assert.Contains("Created", File.ReadAllText(Path.Combine(_runDir, "items.csv")));
         Assert.Contains("stopped", File.ReadAllText(Path.Combine(_runDir, "report.md")), StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task Unexpected_exception_after_the_writes_still_writes_the_report_and_gives_exit_code_1()
+    {
+        var api = NewApi();
+        var reader = new FakeKenticoReader(SampleSite()) { FailOnCountCall = 1 };
+
+        var exit = await Runner(reader, api).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.ItemErrors, exit);
+        Assert.Contains("Created", File.ReadAllText(Path.Combine(_runDir, "items.csv")));
+        var report = File.ReadAllText(Path.Combine(_runDir, "report.md"));
+        Assert.Contains("InvalidOperationException", report);
+        Assert.DoesNotContain("went away", report);
+    }
+
+    [Fact]
+    public async Task Cancel_after_the_writes_started_writes_the_report_and_gives_exit_code_1()
+    {
+        var api = NewApi();
+        using var cancel = new CancellationTokenSource();
+        var posts = 0;
+        api.Failure = c =>
+        {
+            if (c.Method == HttpMethod.Post && c.Path == "/document" && ++posts == 3)
+            {
+                cancel.Cancel();
+                return new OperationCanceledException(cancel.Token);
+            }
+
+            return null;
+        };
+
+        var exit = await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), cancel.Token);
+
+        Assert.Equal(ExitCodes.ItemErrors, exit);
+        Assert.Contains("cancelled", File.ReadAllText(Path.Combine(_runDir, "report.md")), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(2, File.ReadAllLines(Path.Combine(_runDir, "items.csv")).Count(l => l.StartsWith("document,", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task Pages_written_before_an_abort_are_in_the_report()
+    {
+        var api = NewApi();
+        var posts = 0;
+        api.Failure = c => c.Method == HttpMethod.Post && c.Path == "/document" && ++posts == 4
+            ? new UmbracoAuthException("The Umbraco API rejected a freshly issued token (HTTP 401).")
+            : null;
+
+        var exit = await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.ItemErrors, exit);
+        var documents = File.ReadAllLines(Path.Combine(_runDir, "items.csv")).Where(l => l.StartsWith("document,", StringComparison.Ordinal)).ToList();
+        Assert.Equal(3, documents.Count);
+        Assert.All(documents, l => Assert.Contains(",Created,", l));
+    }
 }

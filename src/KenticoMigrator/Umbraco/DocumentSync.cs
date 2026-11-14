@@ -33,13 +33,17 @@ public sealed class DocumentSync
         _templateKeys = templates.ToDictionary(t => t.Alias, t => t.Key, StringComparer.Ordinal);
     }
 
-    /// <summary>Results come in processing order (parents first), one per planned document.</summary>
-    public async Task<IReadOnlyList<ItemResult>> SyncAsync(IReadOnlyList<TargetDocument> documents, SyncOptions options, CancellationToken ct)
+    /// <summary>
+    /// Results come in processing order (parents first), one per planned document. Pass <paramref name="results"/> to keep what
+    /// was done when the run aborts (a rejected token, a cancel): the list is filled as pages are written, so the caller can still
+    /// report them.
+    /// </summary>
+    public async Task<IReadOnlyList<ItemResult>> SyncAsync(IReadOnlyList<TargetDocument> documents, SyncOptions options, CancellationToken ct, List<ItemResult>? results = null)
     {
         ArgumentNullException.ThrowIfNull(documents);
         ArgumentNullException.ThrowIfNull(options);
 
-        var results = new List<ItemResult>(documents.Count);
+        results ??= new List<ItemResult>(documents.Count);
         var present = new HashSet<Guid>();
         foreach (var doc in ParentsFirst(documents))
         {

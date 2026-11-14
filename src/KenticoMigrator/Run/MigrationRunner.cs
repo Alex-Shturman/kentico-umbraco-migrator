@@ -124,8 +124,8 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         }).ConfigureAwait(false);
 
         // From here on something may have been written, so a failure ends the run with a report and exit code 1, not 2.
-        var items = new List<ItemResult>();
-        IReadOnlyList<ItemResult> documents = [];
+        var schemaResults = new List<ItemResult>();
+        var documents = new List<ItemResult>();
         IReadOnlyList<MissingInSource> missing = [];
         TargetCounts? after = null;
         IReadOnlyList<CountDrop> drops = [];
@@ -133,20 +133,18 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         var stopped = false;
         try
         {
-            var schema = await Timed(timings, Phases.Schema, async () =>
+            await Timed(timings, Phases.Schema, async () =>
             {
-                var results = await new SchemaSync(api!).EnsureAsync(plan, preview, ct).ConfigureAwait(false);
-                return (results, Summarize(results));
+                schemaResults.AddRange(await new SchemaSync(api!).EnsureAsync(plan, preview, ct).ConfigureAwait(false));
+                return (0, Summarize(schemaResults));
             }).ConfigureAwait(false);
-            items.AddRange(schema);
 
-            documents = await Timed(timings, Phases.Documents, async () =>
+            await Timed(timings, Phases.Documents, async () =>
             {
-                var results = await new DocumentSync(api!, plan.DocumentTypes, plan.Templates)
-                    .SyncAsync([.. plan.Documents.Select(WithoutMediaPickers)], new SyncOptions(request.OverwriteEdited, preview), ct).ConfigureAwait(false);
-                return (results, Summarize(results));
+                await new DocumentSync(api!, plan.DocumentTypes, plan.Templates)
+                    .SyncAsync([.. plan.Documents.Select(WithoutMediaPickers)], new SyncOptions(request.OverwriteEdited, preview), ct, documents).ConfigureAwait(false);
+                return (0, Summarize(documents));
             }).ConfigureAwait(false);
-            items.AddRange(documents);
 
             missing = await Timed(timings, Phases.Verify, async () =>
             {
@@ -165,13 +163,16 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
                 return (found, $"{found.Count} missing in source, {drops.Count} count drops");
             }).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is UmbracoApiException or UmbracoAuthException && !ct.IsCancellationRequested)
+        catch (Exception ex)
         {
+            // Any failure, a cancel included: the pages written so far are in the lists, so the report still tells what happened.
             stopped = true;
-            var reason = ApiErrors.Describe(ex);
+            var reason = ex is OperationCanceledException && ct.IsCancellationRequested ? "cancelled" : ApiErrors.Describe(ex);
             output.WriteLine($"run stopped: {reason}");
             extraIssues.Add(new PlanIssue(PlanSeverities.Error, "target", $"The run stopped early: {reason}"));
         }
+
+        var items = schemaResults.Concat(documents).ToList();
 
         WriteSummaryLines(plan, documents, missing, drops);
 
