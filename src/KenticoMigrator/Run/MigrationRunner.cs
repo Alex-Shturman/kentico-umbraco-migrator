@@ -135,7 +135,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         {
             await Timed(timings, Phases.Schema, async () =>
             {
-                schemaResults.AddRange(await new SchemaSync(api!).EnsureAsync(plan, preview, ct, request.OverwriteEdited).ConfigureAwait(false));
+                await new SchemaSync(api!).EnsureAsync(plan, preview, ct, request.OverwriteEdited, schemaResults).ConfigureAwait(false);
                 return (0, Summarize(schemaResults));
             }).ConfigureAwait(false);
 
@@ -143,7 +143,8 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             {
                 await new DocumentSync(api!, plan.DocumentTypes, plan.Templates)
                     .SyncAsync([.. plan.Documents.Select(WithoutMediaPickers)], new SyncOptions(request.OverwriteEdited, preview), ct, documents).ConfigureAwait(false);
-                return (0, Summarize(documents));
+                var sorts = documents.Where(r => r.Kind == ItemKinds.Sort).ToList();
+                return (0, Summarize(documents.Where(r => r.Kind == ItemKinds.Document).ToList()) + (sorts.Count > 0 ? $"; sorts: {Summarize(sorts)}" : string.Empty));
             }).ConfigureAwait(false);
 
             missing = await Timed(timings, Phases.Verify, async () =>
@@ -251,17 +252,8 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             output.WriteLine($"plan warnings: {warnings}");
         }
 
-        var skipped = items.Count(r => r.Outcome == ItemOutcome.EditedSkipped);
-        if (skipped > 0)
-        {
-            output.WriteLine($"edited in Umbraco, not updated: {skipped}");
-        }
-
-        var overwritten = items.Count(r => r.Outcome == ItemOutcome.EditedOverwritten);
-        if (overwritten > 0)
-        {
-            output.WriteLine($"edited in Umbraco, overwritten: {overwritten}");
-        }
+        WriteEdited(items, ItemOutcome.EditedSkipped, "edited in Umbraco, not updated");
+        WriteEdited(items, ItemOutcome.EditedOverwritten, "edited in Umbraco, overwritten");
 
         if (missing.Count > 0)
         {
@@ -273,6 +265,28 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             output.WriteLine($"count dropped: {drop.Type} {drop.Before} -> {drop.After}");
         }
     }
+
+    // The total, then the kinds it is made of: "2 (documents 1, templates 1)".
+    private void WriteEdited(IReadOnlyList<ItemResult> items, ItemOutcome outcome, string label)
+    {
+        var edited = items.Where(r => r.Outcome == outcome).ToList();
+        if (edited.Count == 0)
+        {
+            return;
+        }
+
+        var kinds = edited.GroupBy(r => KindLabel(r.Kind)).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => $"{g.Key} {g.Count()}");
+        output.WriteLine($"{label}: {edited.Count} ({string.Join(", ", kinds)})");
+    }
+
+    private static string KindLabel(string kind) => kind switch
+    {
+        ItemKinds.Document => "documents",
+        ItemKinds.Template => "templates",
+        ItemKinds.DocumentType => "document types",
+        ItemKinds.DataType => "data types",
+        _ => kind,
+    };
 
     // One line per distinct error with a count and one example (a type alias or old path, never a field value).
     private void WriteFailures(IReadOnlyList<ItemResult> items)

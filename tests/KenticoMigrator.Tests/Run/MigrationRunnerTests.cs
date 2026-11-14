@@ -374,4 +374,40 @@ public sealed class MigrationRunnerTests : IDisposable
         Assert.Contains("edited in Umbraco, overwritten: 1", _output.ToString());
         Assert.Contains("migrator-fingerprint", api.Stored("template", templateKey)!["content"]!.GetValue<string>());
     }
+
+    [Fact]
+    public async Task Edited_items_are_labelled_by_kind_on_the_console()
+    {
+        var api = NewApi();
+        await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+        var templateKey = PlanBuilder.Build(SampleSite(), SampleProfile()).Templates.Single(t => t.Alias == "migratedPage").Key;
+        api.Stored("template", templateKey)!["content"] = "<p>changed</p>";
+        var aboutKey = PlanBuilder.Build(SampleSite(), SampleProfile()).Documents.First(d => d.OldPath == "/About").Key;
+        api.Stored("document", aboutKey)!["values"]!.AsArray().Single(v => v!["alias"]!.GetValue<string>() == "title")!["value"] = "Edited";
+        _output.GetStringBuilder().Clear();
+
+        await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Contains("edited in Umbraco, not updated: 2 (documents 1, templates 1)", _output.ToString());
+    }
+
+    [Fact]
+    public async Task Documents_summary_counts_pages_and_reports_sorts_separately()
+    {
+        var api = NewApi();
+        var site = SampleSite();
+        await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+        var homeKey = GuidFor(1);
+        var reversed = api.ChildrenOf(homeKey).Reverse().Select((key, index) => new { id = key, sortOrder = index }).ToArray();
+        await api.SendAsync(HttpMethod.Put, "/document/sort", new { parent = new { id = homeKey }, sorting = reversed }, Ct);
+        // One page changes in the source, so the run writes under Home and puts its children in the planned order again.
+        var changed = site with { Documents = [.. site.Documents.Select(d => d.NodeId == 2 ? d with { Name = "About the shop" } : d)] };
+        _output.GetStringBuilder().Clear();
+
+        await Runner(new FakeKenticoReader(changed), api).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        var line = _output.ToString().Split('\n').First(l => l.StartsWith("documents:", StringComparison.Ordinal));
+        var pages = PlanBuilder.Build(site, SampleProfile()).Documents.Count;
+        Assert.StartsWith($"documents: 1 Updated, {pages - 1} Unchanged; sorts: 1 Updated", line);
+    }
 }
