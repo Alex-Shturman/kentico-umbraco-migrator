@@ -13,6 +13,7 @@ public static class PlanAliases
     public const string MetaTitle = "metaTitle";
     public const string MetaDescription = "metaDescription";
     public const string MetaKeywords = "metaKeywords";
+    public const string UrlName = "umbracoUrlName";
     public const string NaviHide = "umbracoNaviHide";
     public const string HideFromSitemap = "hideFromSitemap";
     public const string SourceKey = "migrationSourceKey";

@@ -18,6 +18,125 @@ public sealed record OwnedValues(string Name, Guid? ParentKey, IReadOnlyDictiona
     /// <summary>Owned values of a media item: its name, folder and media type.</summary>
     public static OwnedValues ForMedia(string name, Guid? parentKey, string mediaType) =>
         new(name, parentKey, new Dictionary<string, JsonNode?> { ["mediaType"] = JsonValue.Create(mediaType) });
+
+    /// <summary>
+    /// The planned side: a planned document converted to the Management API write shape. The result serves two uses, so
+    /// the written body and the fingerprint can never disagree: <see cref="ToApiValues"/> gives the <c>values</c> of a
+    /// POST or PUT body, and <see cref="Fingerprint.Compute(OwnedValues)"/> gives the hash. <see cref="Values"/> holds every
+    /// owned property, including those whose planned value is empty (they are written as null so a removed source value
+    /// clears the property), plus <c>umbracoUrlName</c>; its keys are the owned aliases to pass to
+    /// <see cref="Fingerprint.FromCurrent"/>. Values: text as string, rich text as <c>{markup, blocks: null}</c>,
+    /// integers and decimals as invariant JSON numbers, dates as <c>yyyy-MM-dd HH:mm:ss</c> (the Kentico wall-clock value as
+    /// it is, no time zone conversion), tags and dropdowns as arrays, media as <c>[{key, mediaKey}]</c> with stable
+    /// <see cref="Fingerprint.PickerItemKey"/> keys.
+    /// </summary>
+    /// <param name="doc">The planned document.</param>
+    /// <param name="rewriteRichText">Applied to every rich text markup (link rewriting); null leaves it as planned.</param>
+    public static OwnedValues FromPlanned(TargetDocument doc, Func<string, string>? rewriteRichText = null)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+
+        var values = new Dictionary<string, JsonNode?>(StringComparer.Ordinal)
+        {
+            [PlanAliases.UrlName] = JsonValue.Create(doc.UrlName),
+        };
+        foreach (var (alias, planned) in doc.Values.OrderBy(v => v.Key, StringComparer.Ordinal))
+        {
+            values[alias] = PlannedShape.Convert(doc.Key, alias, planned, rewriteRichText);
+        }
+
+        return new OwnedValues(doc.Name, doc.ParentKey, values);
+    }
+
+    /// <summary>
+    /// The <c>values</c> array of a POST or PUT body: <c>{alias, culture: null, segment: null, value}</c> per owned
+    /// property, plus the <c>migrationFingerprint</c> property when <paramref name="fingerprint"/> is given.
+    /// </summary>
+    public JsonArray ToApiValues(string? fingerprint = null)
+    {
+        var body = new JsonArray();
+        foreach (var (alias, value) in Values)
+        {
+            body.Add(ApiEntry(alias, value?.DeepClone()));
+        }
+
+        if (fingerprint is not null)
+        {
+            body.Add(ApiEntry(PlanAliases.Fingerprint, JsonValue.Create(fingerprint)));
+        }
+
+        return body;
+    }
+
+    private static JsonObject ApiEntry(string alias, JsonNode? value) =>
+        new() { ["alias"] = alias, ["culture"] = null, ["segment"] = null, ["value"] = value };
+}
+
+/// <summary>Converts one planned value to the verified write shape (research R7).</summary>
+internal static class PlannedShape
+{
+    public static JsonNode? Convert(Guid ownerKey, string alias, PlannedValue planned, Func<string, string>? rewriteRichText)
+    {
+        var raw = planned.Raw;
+        switch (planned.Editor)
+        {
+            case "TextBox":
+            case "TextArea":
+                return raw is null ? null : JsonValue.Create(System.Convert.ToString(raw, CultureInfo.InvariantCulture));
+            case "RichText":
+                if (raw is null)
+                {
+                    return null;
+                }
+
+                var markup = System.Convert.ToString(raw, CultureInfo.InvariantCulture)!;
+                return new JsonObject { ["markup"] = rewriteRichText?.Invoke(markup) ?? markup, ["blocks"] = null };
+            case "Integer":
+                return raw is null ? null : JsonValue.Create(System.Convert.ToInt64(raw, CultureInfo.InvariantCulture));
+            case "Decimal":
+                return raw is null ? null : JsonValue.Create(System.Convert.ToDecimal(raw, CultureInfo.InvariantCulture));
+            case "TrueFalse":
+                return raw is null ? null : JsonValue.Create(System.Convert.ToBoolean(raw, CultureInfo.InvariantCulture));
+            case "DateTime":
+                return raw switch
+                {
+                    null => null,
+                    DateTime dt => JsonValue.Create(dt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)),
+                    DateTimeOffset dto => JsonValue.Create(dto.DateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)),
+                    _ => JsonValue.Create(System.Convert.ToString(raw, CultureInfo.InvariantCulture)),
+                };
+            case "Tags":
+                return raw is IEnumerable<string> tags && tags.Any() ? new JsonArray([.. tags.Select(t => (JsonNode?)JsonValue.Create(t))]) : null;
+            case "DropDown":
+                return raw is string choice && choice.Length > 0 ? new JsonArray(JsonValue.Create(choice)) : null;
+            case "MediaSingle":
+                return raw is Guid single ? Picker(ownerKey, alias, [single]) : null;
+            case "MediaMultiple":
+                return raw is IEnumerable<Guid> many ? Picker(ownerKey, alias, [.. many]) : null;
+            default:
+                throw new NotSupportedException($"Editor '{planned.Editor}' of property '{alias}' has no write shape.");
+        }
+    }
+
+    private static JsonArray? Picker(Guid ownerKey, string alias, IReadOnlyList<Guid> media)
+    {
+        if (media.Count == 0)
+        {
+            return null;
+        }
+
+        var items = new JsonArray();
+        for (var i = 0; i < media.Count; i++)
+        {
+            items.Add(new JsonObject
+            {
+                ["key"] = Fingerprint.PickerItemKey(ownerKey, alias, i, media[i]).ToString("D"),
+                ["mediaKey"] = media[i].ToString("D"),
+            });
+        }
+
+        return items;
+    }
 }
 
 /// <summary>
@@ -25,7 +144,9 @@ public sealed record OwnedValues(string Name, Guid? ParentKey, IReadOnlyDictiona
 /// from the values read back from Umbraco, so an item that nobody touched hashes equal on both sides. The form hides
 /// what the server adds or reshapes (verified, R6/R7): rich text compares by <c>markup</c> only, media picker items by
 /// <c>key</c> and <c>mediaKey</c> only, dates in the <c>yyyy-MM-dd HH:mm:ss</c> form, numbers by value.
-/// Empty values (null, empty string, empty array, empty markup) equal a missing value.
+/// Empty values (null, empty string, empty array, empty markup) equal a missing value. Date normalisation applies to
+/// every string value shaped like a date and time, on both sides, so a text field that holds such a string is compared
+/// in the same normalised form (a deliberate trade-off: both sides are always treated alike).
 /// </summary>
 public static partial class Fingerprint
 {
@@ -102,10 +223,10 @@ public static partial class Fingerprint
 
     /// <summary>
     /// A stable key for one media picker item. The picker item <c>key</c> is part of the fingerprint, so the tool
-    /// must write the same key on every run.
+    /// must write the same key on every run; the position keeps the same media twice in one picker apart.
     /// </summary>
-    public static Guid PickerItemKey(Guid ownerKey, string alias, Guid mediaKey) =>
-        Keys.Derived("pickeritem", $"{ownerKey:D}:{alias}:{mediaKey:D}");
+    public static Guid PickerItemKey(Guid ownerKey, string alias, int position, Guid mediaKey) =>
+        Keys.Derived("pickeritem", $"{ownerKey:D}:{alias}:{position}:{mediaKey:D}");
 
     // Returns the canonical node, or null when the value is empty.
     private static JsonNode? Normalize(JsonNode? node)

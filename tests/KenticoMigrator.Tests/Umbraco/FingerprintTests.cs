@@ -214,13 +214,14 @@ public sealed class FingerprintTests
     }
 
     [Fact]
-    public void Picker_item_key_is_stable_and_depends_on_all_parts()
+    public void Picker_item_key_is_stable_and_depends_on_all_parts_including_position()
     {
         var owner = Parent;
         var media = new Guid("f18ec404-bd9f-4142-87e0-542d360589a6");
 
-        Assert.Equal(Fingerprint.PickerItemKey(owner, "hero", media), Fingerprint.PickerItemKey(owner, "hero", media));
-        Assert.NotEqual(Fingerprint.PickerItemKey(owner, "hero", media), Fingerprint.PickerItemKey(owner, "gallery", media));
-        Assert.NotEqual(Fingerprint.PickerItemKey(owner, "hero", media), Fingerprint.PickerItemKey(Guid.NewGuid(), "hero", media));
+        Assert.Equal(Fingerprint.PickerItemKey(owner, "hero", 0, media), Fingerprint.PickerItemKey(owner, "hero", 0, media));
+        Assert.NotEqual(Fingerprint.PickerItemKey(owner, "hero", 0, media), Fingerprint.PickerItemKey(owner, "gallery", 0, media));
+        Assert.NotEqual(Fingerprint.PickerItemKey(owner, "hero", 0, media), Fingerprint.PickerItemKey(Guid.NewGuid(), "hero", 0, media));
+        Assert.NotEqual(Fingerprint.PickerItemKey(owner, "hero", 0, media), Fingerprint.PickerItemKey(owner, "hero", 1, media));
     }
 }
