@@ -1,0 +1,19 @@
+# Client property - never commit (see CLAUDE.md / project rules)
+Sources/
+sources/
+_work/
+
+# .NET
+bin/
+obj/
+*.user
+.vs/
+.idea/
+
+# OS
+.DS_Store
+
+# Run output and local settings
+runs/
+appsettings.*.local.json
+.claude/.cc-writes/
