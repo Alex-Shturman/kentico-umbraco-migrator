@@ -64,6 +64,14 @@ Key derivation (`Migration/Keys.cs`): `Keys.ForDocument(SourceDocument) = NodeGu
 | `RewriteResult` | `Html`, `Rewritten`, `External`, `ToApplication`, `Unresolved: IReadOnlyList<string>` | Rewriting rewritten HTML yields the same HTML |
 | `PlannedRedirect` | `OldUrl`, `TargetKey`, `NewUrl`, `Reason` (`aspx`, `alias`, `home`, `renamed`, `url-path`) | No redirect when normalised old equals normalised new |
 
+String values are constants, not enums (some contain spaces). `SkippedItem.Category` uses
+`SkipCategories` (`ApplicationPage` = `application page`, `HostFile` = `host file`,
+`AttachmentHistory` = `attachment history`, `WildcardRoute` = `wildcard route`, `MissingFile` =
+`missing file`, `UnmappedType` = `unmapped type`). `PlanIssue.Severity` uses `PlanSeverities`
+(`Error` = `error`, `Warning` = `warning`). `PlannedRedirect.Reason` uses `RedirectReasons`
+(`Aspx` = `aspx`, `Alias` = `alias`, `Home` = `home`, `Renamed` = `renamed`, `UrlPath` =
+`url-path`). `MediaType` (`Folder`, `Image`, `File`) is an enum.
+
 ## 5. Sync results (`Umbraco/`)
 
 | Record | Fields | Rules |
@@ -71,6 +79,9 @@ Key derivation (`Migration/Keys.cs`): `Keys.ForDocument(SourceDocument) = NodeGu
 | `ItemOutcome` (enum) | `Created`, `Updated`, `Unchanged`, `EditedSkipped`, `EditedOverwritten`, `WouldCreate`, `WouldUpdate`, `Failed` | `Would*` only in preview |
 | `ItemResult` | `Key`, `Kind` (`dataType`, `documentType`, `template`, `media`, `document`, `redirect`), `TypeAlias`, `OldPath`, `Outcome`, `Error?` | |
 | `MissingInSource` | `Key`, `Kind`, `SourceKey`, `Name` | Items with a `migrationSourceKey` not in the plan (FR-015b) |
+
+`ItemResult.Kind` uses `ItemKinds`: `DataType` = `dataType`, `DocumentType` = `documentType`,
+`Template` = `template`, `Media` = `media`, `Document` = `document`, `Redirect` = `redirect`.
 
 Hidden properties on every migrated document and media item (composition `migrationComposition`):
 `migrationSourceKey` (Textstring, read-only label) and `migrationFingerprint` (Textstring,
@@ -83,8 +94,12 @@ read-only label). The fingerprint is SHA-256 (hex) over canonical JSON of the ow
 |---|---|
 | `TargetCounts` | `DocumentsByType: IReadOnlyDictionary<string,int>`, `Media`, `Redirects` |
 | `CountDrop` | `Type`, `Before`, `After` |
-| `PhaseTiming` | `Phase` (`read`, `plan`, `snapshot`, `schema`, `media`, `documents`, `redirects`, `verify`, `report`), `Elapsed` |
-| `RunReport` | `RunId`, `Command`, `StartedUtc`, `Duration`, `KenticoVersion`, `SourceCountsBefore`, `SourceCountsAfter`, `TargetCountsBefore`, `TargetCountsAfter`, `CountDrops`, `Items: IReadOnlyList<ItemResult>` (summarised per kind and type), `Skipped`, `Issues`, `Links` (totals + unresolved list), `Redirects`, `MissingInSource`, `Schedules`, `Timings`, `ExitCode` |
+| `PhaseTiming` | `Phase` (`Phases` constants: `read`, `plan`, `snapshot`, `schema`, `media`, `documents`, `redirects`, `verify`, `report`), `Elapsed` |
+| `LinkStats` | `Rewritten`, `External`, `ToApplication`, `Unresolved: IReadOnlyList<UnresolvedLink>` |
+| `UnresolvedLink` | `OldPath` (page the link is on), `Href` |
+| `RedirectSummary` | `Reason` (`RedirectReasons`), `Created`, `Existing`, `Failed` |
+| `ScheduleNote` | `Key`, `OldPath`, `Note` (publish window not applied, FR-014a) |
+| `RunReport` | `RunId`, `Command`, `StartedUtc`, `Duration`, `KenticoVersion`, `SourceCountsBefore?`, `SourceCountsAfter?`, `TargetCountsBefore?`, `TargetCountsAfter?` (null when the phase did not run, for example `plan` without a target), `CountDrops`, `Items: IReadOnlyList<ItemResult>` (summarised per kind and type), `Skipped`, `Issues`, `Links: LinkStats`, `Redirects: IReadOnlyList<RedirectSummary>`, `MissingInSource`, `Schedules: IReadOnlyList<ScheduleNote>`, `Timings`, `ExitCode` |
 
 Exit codes: `0` success, `1` item errors, `2` configuration or connection error or plan errors,
 `3` count drop. Reports contain paths, keys, counts and timings only (FR-028).

@@ -73,6 +73,11 @@ page gets `umbracoUrlName` from its node alias unless a reparent rule says other
 
 ## Validation
 
-Loading fails with exit code 2 when: a `kenticoClass` is unknown to the source, a `target` alias
-repeats within a type, an `editor` value is unknown, or a path in `newParentPath`/`parentPath`
-does not resolve to a planned item.
+Load-time (`SiteProfile.Load`, any problem is an `InvalidDataException`, exit code 2): unreadable
+file or invalid JSON, missing or empty required values (`name`, `kenticoClass`, `targetAlias`,
+`source`, `target`, `editor`, `newParentPath`, `urlNameFrom`, `nameField`, `parentPath`), null list
+entries, an unknown `editor` value, a `target` alias that repeats within a type.
+
+Plan-time (`PlanBuilder`, reported as a `PlanIssue` with severity `error`, exit code 2, nothing is
+written): a `kenticoClass` unknown to the source, a path in `newParentPath`/`parentPath` that does
+not resolve to a planned item.
