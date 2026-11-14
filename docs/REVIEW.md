@@ -42,7 +42,7 @@ Compliant: item keys come from `Keys` (Kentico GUIDs or UUID v5; the only random
 deleted or unpublished, snapshots are taken before and after, exit code 3 is returned when a count dropped in a normal run, and
 the reports are written on plan errors, an unreachable target, failed items and a stop inside the run.
 
-Not compliant in three places (follow-ups):
+Not compliant in three places (follow-ups, all fixed on 2026-11-14: T066, T067, T068 are done in `tasks.md`):
 
 | Task | Finding |
 |---|---|

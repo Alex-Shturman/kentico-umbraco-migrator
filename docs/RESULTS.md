@@ -9,20 +9,20 @@ on the source (marked as such). Date of the run: 2026-11-14. Profile: `profiles/
 
 | Item | Source (Kentico 11) | Target (Umbraco 17) |
 |---|---|---|
-| Pages in the tree | 172 (including the root) | 139 documents |
+| Pages in the tree | 172 (including the root) | 140 documents (139 migrated pages plus the tool-owned `settings` folder) |
 | Brand pages (`PO.Make`) | 88 pages plus 10 rows without a page | 98 (88 published, 10 unpublished for review) |
 | Articles | 6 | 6 |
 | Products | 3 | 3 |
 | Lookup items (categories 4, horsepower 6, listing plans 2, renewal plans 1) | 13 | 13 |
 | Content pages and lists | 49 `CMS.MenuItem` pages | 9 content pages, 1 article list, 1 brand list, 1 product list (12 pages) |
-| Folders | 2 `CMS.Folder` plus 5 `CMS.MenuItem` containers that hold no text | 7 folders (`contentFolder`, no template) |
+| Folders | 2 `CMS.Folder` plus 5 `CMS.MenuItem` containers that hold no text | 8 folders (`contentFolder`, no template): the 7 source folders and the `settings` folder |
 | Attachments | 25 | 22 images in Azure Blob media (1 skipped orphan, 2 host files) |
 | Media folders | | 6 |
 | Media libraries | 0 | 0 |
 | Document aliases | 28 (3 are wildcard routes) | 3 wildcard routes reported, not redirected; the others are part of the redirects below |
-| Redirects | | 306 |
+| Redirects | | 261 (was 306 before T065) |
 
-Document types per target type: `brand` 98, `article` 6, `contentPage` 9, `contentFolder` 7, `horsepowerRange` 6,
+Document types per target type: `brand` 98, `article` 6, `contentPage` 9, `contentFolder` 8, `horsepowerRange` 6,
 `listingCategory` 4, `product` 3, `listingPlan` 2, `articleList` 1, `brandList` 1, `productList` 1, `renewalPlan` 1.
 
 Schema written by the first run: 2 data types, 15 document types, 2 templates (19 created, 19 unchanged on the second run).
@@ -64,48 +64,50 @@ An aggregate SQL count on the source finds 90 links to the brand search route, a
 unresolved, so all 90 are among the 95 rewritten links (SC-004). The tool classified 104 links in the migrated pages;
 DISCOVERY.md counted 106 in the whole source, which includes pages that are not migrated.
 
-## Redirects by reason (306)
+## Redirects by reason (261)
 
 | Reason | Created |
 |---|---|
 | `aspx`: the `.aspx` form of a page URL | 121 |
-| `url-path`: the old tree path of a page whose new URL differs (brand pages moved below the brand list, cleaned segments) | 90 |
-| `alias`: any other old URL, including the old brand route of names without a space | 63 |
+| `url-path`: the old tree path of a page whose new URL differs (the brand list and brand pages moved to `/search-featured`, the lookup containers moved to `/settings`, cleaned segments) | 103 |
+| `alias`: any other old URL (the old brand route of names without a space is no longer needed) | 5 |
 | `renamed`: an old route that contains a space (brand routes) | 30 |
 | `home`: `/Home` and `/Home.aspx` | 2 |
 
-The second run found all 306 as existing and created none.
+The second run found all 261 as existing and created none. Before T065 and T070 there were 306: 45 fewer redirects are needed
+now that 58 brand routes are served directly.
 
 ## Timings
 
 | Phase | First run | Second run |
 |---|---|---|
-| read the source | 0.22 s | 0.20 s |
-| plan | 0.01 s | 0.01 s |
-| snapshot | 0.05 s | 0.14 s |
-| schema | 1.25 s | 0.08 s |
-| media | 1.69 s | 0.11 s |
-| documents | 19.99 s | 0.94 s |
-| redirects | 0.97 s | 0.39 s |
-| verify | 0.49 s | 0.25 s |
-| **Total** | **25.18 s** | **2.29 s** |
+| read the source | 0.21 s | 0.20 s |
+| plan | 0.02 s | 0.02 s |
+| snapshot | 0.06 s | 0.16 s |
+| schema | 1.33 s | 0.08 s |
+| media | 1.64 s | 0.11 s |
+| documents | 18.25 s | 0.90 s |
+| redirects | 0.88 s | 0.35 s |
+| verify | 0.37 s | 0.22 s |
+| **Total** | **23.13 s** | **2.16 s** |
 
 ## Second run
 
-Exit code 0. Schema 19 unchanged; media 28 unchanged; documents 139 unchanged (0 created, 0 updated); redirects 0 created and
-306 existing. Target counts are the same as after the first run.
+Exit code 0. Schema 19 unchanged; media 28 unchanged; documents 140 unchanged (0 created, 0 updated); redirects 0 created and
+261 existing. Target counts are the same as after the first run.
 
 ## URL check
 
 `scripts/check-urls.sh` against `_work/expected-urls.txt` (git-ignored), a list generated from the source with aggregate SQL
 that returns paths only: the kept path and its `.aspx` form of every migrated page, the fixed aliases, the old brand route of
-each of the 88 published brands, and 404 for template-less pages and folders. 156 lines: 21 answer 200, 116 answer 301, 19
-answer 404.
+each of the 88 published brands, and 404 for template-less pages and folders. The file was regenerated for the new paths
+(T064, T065, T070) and has 156 lines: 78 answer 200, 72 answer 301, 6 answer 404.
 
-Result: **155 OK, 1 FAIL**. All 88 old brand routes, all `.aspx` forms and all other aliases answer correctly. The one
-failure is the alias that used to serve the products landing page: `/products` answers 404 although its redirect is registered.
-`/Products` is a template-less folder in the new tree at the same URL, and Umbraco answers a found page without a template
-with 404 before the redirect finder runs. Follow-up task T064 in `tasks.md`.
+Result: **156 OK, 0 FAIL**, on a fresh target and again after the second run. The old brand routes of the 58 names without a space
+answer 200 at their old URL; the 30 with a space answer 301 to the alias URL under `/search-featured/`; the old tree paths
+`/Listings/Search-Featured/...` answer 301 to the new place. `/products` (the alias of `/Products/Home`) now answers 301 to
+`/products/home/` through the host's `TemplateLessRedirectFinder` (T064); the plan reports the collision as a warning (the only
+issue of the run). The 13 lookup items answer 301 to `/settings/<container>/<alias>/`, which answers 404 as the old URL did.
 
 ## Comparison with the success criteria
 
@@ -113,9 +115,9 @@ with 404 before the redirect finder runs. Follow-up task T064 in `tasks.md`.
 |---|---|---|
 | SC-001 counts | 88 + 10 brand pages, 6 articles, 3 products, 13 lookup items, 22 media items | 98 brand pages (10 unpublished), 6, 3, 13, 22 images: matches. Everything else is migrated or listed as skipped with a reason |
 | SC-002 second run | 0 created, 0 updated | 0 created, 0 updated |
-| SC-003 old URLs | all OK | 155 of 156 OK; `/products` fails (T064) |
+| SC-003 old URLs | all OK | 156 of 156 OK |
 | SC-004 brand links | 90 resolved, 0 unlisted unresolved | 90 in migrated pages, 0 unresolved |
-| SC-006 duration | under 5 minutes | 25.18 s for the full first run |
+| SC-006 duration | under 5 minutes | 23.13 s for the full first run |
 
 ## Fresh clone
 
@@ -147,11 +149,12 @@ Doc gap found and fixed: the README named the host secrets only by reference to 
   links. The image paths of the rewriter are exercised by the sample and the unit tests, not by the reference site.
 - **Scope extensions.** Lookup items (13) and the SKU fields of the 3 products are migrated although the brief mentions
   neither; 10 brand rows without a page are created as unpublished pages for review.
-- **Lookup items stay in their source containers.** MAPPING.md planned a hidden `settings` folder; the tool does not create
-  folders that do not exist in the source tree, so the 13 items stay below their original containers
-  (`/listings/listingcategory` and so on), which are template-less folders. The lookup pages have no template and answer 404.
-- **Brand pages are below `/listings/search-featured`**, not at `/search-featured`. The live brand URL works through a
-  redirect for every brand (follow-up T065). MAPPING.md planned 65 direct brand URLs.
+- **Lookup items are in a hidden `settings` folder** (T070, decision Q1), at `/settings/<container>/<alias>`. They have no
+  template and answer 404, like the old URLs; the old paths redirect to the new place, a redirect whose target also answers 404.
+- **Brand pages are served at `/search-featured/<alias>`** (T065, decision U1): the 58 names without a space directly at their
+  old URL, the 30 with a space through a `renamed` redirect. MAPPING.md planned 65 direct brand URLs; the reference data has 58.
+- **The redirect for `/products` depends on the host.** A folder URL answers 404 in Umbraco before redirects are tried, so
+  the host carries `TemplateLessRedirectFinder`; a target site without it answers 404 there (the plan warns).
 - **Umbraco cleans URL segments.** Characters such as parentheses and dashes are dropped from a URL segment, so a page whose
   node alias contains them gets a different URL than before; its old path is redirected (part of the `url-path` redirects).
 - **Folders without a template answer 404**, as in Kentico.

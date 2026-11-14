@@ -43,10 +43,10 @@ notes are in [docs/RESULTS.md](docs/RESULTS.md).
 | Articles / products / lookup items | 6 / 3 / 13 | 6 / 3 / 13 |
 | Media | 25 attachments | 22 images (2 host files and 1 orphan reported) |
 | Links in rich text | 104 in migrated pages | 95 rewritten, 6 external, 3 to the application, 0 unresolved |
-| Old URLs checked | 156 | 155 correct, 1 known failure |
-| Redirects | | 306 |
+| Old URLs checked | 156 | 156 correct |
+| Redirects | | 261 |
 | Skipped, each with a reason | | 44 |
-| Full first run | | 25 s |
+| Full first run | | 23 s |
 | Second run | | 0 created, 0 updated |
 
 ## Quickstart with the sample
@@ -146,8 +146,8 @@ The full list of re-run rules (document types, templates, failed publishing) is 
 - Only content moves. Templates, layouts, web parts, transformations and CSS are not read; the Umbraco views are minimal.
 - One page type can be mapped per Kentico class and path; the profile is JSON, not a user interface.
 - The Management API cannot create redirects, so the host adds one endpoint for them; a target without that endpoint gets no redirects.
-- Redirects only answer when no page is found at the old URL. An old URL that equals a template-less folder in the new tree answers
-  404 (tracked as T064 in [tasks.md](specs/001-kentico-umbraco-migrator/tasks.md); one URL on the reference site).
+- Redirects only answer when no page is found at the old URL. An old URL that equals a template-less folder in the new tree is
+  answered by the host's `TemplateLessRedirectFinder` (T064, one URL on the reference site); a target site without it answers 404 and the plan warns.
 - Publish windows (scheduled publishing) are not applied; pages with a window are listed in the report.
 - Rich text is rewritten for links to pages, media and the old brand route. The reference site has no images or attachment links
   in its text, so the media link rewriting is verified by the sample and unit tests only.
