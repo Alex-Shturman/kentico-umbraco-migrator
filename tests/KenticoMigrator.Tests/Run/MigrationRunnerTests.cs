@@ -163,6 +163,27 @@ public sealed class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task Failure_in_the_plan_phase_still_writes_a_report_with_exit_code_2()
+    {
+        var api = NewApi();
+        var request = Request(CliArguments.Migrate) with { MediaFileExists = _ => throw new InvalidOperationException("The file system went away") };
+
+        var site = SampleSite() with { MediaFiles = [MediaFile(GuidFor(100), "Gallery", "a.jpg")] };
+
+        var exit = await Runner(new FakeKenticoReader(site), api).RunAsync(request, Ct);
+
+        Assert.Equal(ExitCodes.ConfigurationOrPlanError, exit);
+        Assert.Empty(api.Writes);
+        var report = ReadReport();
+        Assert.Equal(2, report.GetProperty("exitCode").GetInt32());
+        var issue = Assert.Single(report.GetProperty("issues").EnumerateArray());
+        Assert.Equal("plan", issue.GetProperty("oldPath").GetString());
+        Assert.Contains("InvalidOperationException", issue.GetProperty("message").GetString()); // type only, never the message
+        Assert.DoesNotContain("The file system went away", File.ReadAllText(Path.Combine(_runDir, "report.json")));
+        Assert.True(File.Exists(Path.Combine(_runDir, "report.md")));
+    }
+
+    [Fact]
     public async Task Failure_in_the_first_snapshot_still_writes_a_report_with_exit_code_2()
     {
         var api = NewApi();

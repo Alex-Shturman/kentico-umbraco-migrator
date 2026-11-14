@@ -79,7 +79,7 @@ top level (below the home page, whose URL segment Umbraco hides). `urlName`, whe
 page, so a container can be served at a chosen top-level URL (`/search-featured/<alias>` in the reference profile). A
 `reparent` rule still decides the parent of a class of pages; a placement decides the parent of one page. Only a placement can
 name the settings folder as a parent (a `reparent` rule or `unlinkedRows` entry cannot), a placement path must be a source
-page, not an unlinked row, and the settings folder `path` should be a single segment such as `/Settings`.
+page, not an unlinked row, and a page can be placed only once (a second placement of the same path is a plan error). The settings folder `path` must start with `/` and have exactly one non-empty segment without whitespace, such as `/Settings`.
 
 `settingsFolder` makes the tool create one folder (`contentFolder`, no template, published, `umbracoNaviHide` and
 `hideFromSitemap` set) at the top level, sorted after the source pages. Its `path` is only the name placements use to address it;
@@ -93,11 +93,11 @@ page gets `umbracoUrlName` from its node alias unless a reparent rule says other
 ## Validation
 
 Load-time (`SiteProfile.Load`, any problem is an `InvalidDataException`, exit code 2): unreadable
-file or invalid JSON, missing or empty required values (`name`, `kenticoClass`, `targetAlias`,
+file or invalid JSON, a key the profile does not know (the error names it, so a misspelled key cannot turn a rule off), missing or empty required values (`name`, `kenticoClass`, `targetAlias`,
 `source`, `target`, `editor`, `newParentPath`, `urlNameFrom`, `nameField`, `parentPath`, placement `path` and
-`newParentPath`, settings folder `path` and `name`), null list
+`newParentPath`, settings folder `path` and `name`), a settings folder `path` that is not `/` plus exactly one segment without whitespace, null list
 entries, an unknown `editor` value, a `target` alias that repeats within a type.
 
 Plan-time (`PlanBuilder`, reported as a `PlanIssue` with severity `error`, exit code 2, nothing is
 written): a `kenticoClass` unknown to the source, a path in `newParentPath`/`parentPath` or a placement
-`path`/`newParentPath` that does not resolve to a planned item, a settings folder path that is a source page.
+`path`/`newParentPath` that does not resolve to a planned item, a second placement of the same `path`, a settings folder path that is a source page, a parent chain (re-parenting or a placement) that leads back to the page itself.

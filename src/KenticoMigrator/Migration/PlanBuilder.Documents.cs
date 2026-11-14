@@ -137,8 +137,15 @@ public sealed partial class PlanBuilder
     /// <summary>Moves the pages named by the profile's placements (and so everything below them) and sets their URL names.</summary>
     private void ApplyPlacements(List<Node> nodes, Dictionary<string, Node> byAliasPath, Node? home)
     {
+        var placed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var rule in _profile.Placements)
         {
+            if (!placed.Add(rule.Path))
+            {
+                Error(rule.Path, "Duplicate placement for this path.");
+                continue;
+            }
+
             if (!byAliasPath.TryGetValue(rule.Path, out var node) || node.IsSettings)
             {
                 Error(rule.Path, "Placement path does not resolve to a planned page.");
@@ -184,7 +191,7 @@ public sealed partial class PlanBuilder
             {
                 if (p == node)
                 {
-                    Error(node.OldPath, "Re-parenting creates a cycle; the page is placed at the top level.");
+                    Error(node.OldPath, "Re-parenting or a placement creates a cycle.");
                     node.Parent = home is not null && home != node ? home : null;
                     break;
                 }

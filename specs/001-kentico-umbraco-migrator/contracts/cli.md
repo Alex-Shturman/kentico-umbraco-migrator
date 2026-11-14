@@ -29,9 +29,9 @@ user secrets (project `KenticoMigrator`), then command-line `--Key=Value`.
 |---|---|---|
 | `Kentico:ConnectionString` | `Server=localhost,1433;Database=Kentico11Sample;...` | yes |
 | `Kentico:MediaRoot` | `sample/media` | no |
-| `Umbraco:BaseUrl` | `https://localhost:44317` | no |
-| `Umbraco:ClientId` | `umbraco-back-office-migrator` | no |
-| `Umbraco:ClientSecret` | | yes |
+| `Umbraco:BaseUrl` | `https://localhost:44317` (also the default when empty) | no |
+| `Umbraco:ClientId` | `umbraco-back-office-migrator` (also the default when empty) | no |
+| `Umbraco:ClientSecret` | | yes; setting it enables the target, without it the tool runs in plan-only mode |
 | `Umbraco:AllowUntrustedCertificate` | `true` (Development only) | no |
 
 `appsettings.json` in the repository holds only empty placeholders.
@@ -42,7 +42,7 @@ user secrets (project `KenticoMigrator`), then command-line `--Key=Value`.
 |---|---|
 | 0 | Success |
 | 1 | Finished, but one or more items failed |
-| 2 | Configuration, connection, version or plan error, or a failure in the read phase or the first snapshot; nothing was written. A report is still written, with an error issue (exception type or `HTTP <status> <title>` only) |
+| 2 | Configuration, connection, version or plan error, or a failure in the read phase, the plan phase or the first snapshot; nothing was written. A report is still written, with an error issue (exception type or `HTTP <status> <title>` only) |
 | 3 | A target count dropped during the run (also when the run stopped with an exception after the first snapshot: the second snapshot is then taken on a best-effort basis and the guard runs; exit 3 wins over 1) |
 
 ## Console output

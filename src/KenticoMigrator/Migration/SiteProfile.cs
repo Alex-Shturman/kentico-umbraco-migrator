@@ -16,9 +16,11 @@ public sealed record SiteProfile(
     IReadOnlyList<ReparentRule> Reparent,
     IReadOnlyList<UnlinkedRowRule> UnlinkedRows,
     string? MediaRoot,
-    IReadOnlyList<PlacementRule> Placements = null!,
     SettingsFolderRule? SettingsFolder = null)
 {
+    /// <summary>Pages moved below another page; empty unless the profile lists some.</summary>
+    public IReadOnlyList<PlacementRule> Placements { get; init; } = [];
+
     /// <summary>Allowed values of <see cref="FieldMapping.Editor"/> (case-sensitive).</summary>
     public static readonly FrozenSet<string> KnownEditors = new[]
     {
@@ -31,6 +33,8 @@ public sealed record SiteProfile(
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
+        // A misspelled key must not silently turn a rule off.
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
 
     /// <summary>
@@ -143,6 +147,13 @@ public sealed record SiteProfile(
     private static SettingsFolderRule NormalizeSettingsFolder(SettingsFolderRule rule)
     {
         RequireText(rule.Path, "settingsFolder", "path");
+        // The path is the name placements address the folder by, so it is "/" plus exactly one segment without whitespace.
+        var segment = rule.Path.Length > 1 ? rule.Path[1..] : string.Empty;
+        if (rule.Path[0] != '/' || segment.Length == 0 || segment.Contains('/') || segment.Any(char.IsWhiteSpace))
+        {
+            throw new InvalidDataException($"In settingsFolder: 'path' must start with '/' and have exactly one segment without whitespace, got '{rule.Path}'.");
+        }
+
         RequireText(rule.Name, "settingsFolder", "name");
         return rule;
     }

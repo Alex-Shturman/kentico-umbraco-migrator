@@ -195,4 +195,59 @@ public sealed class SiteProfileTests : IDisposable
         var missing = ValidJson.Replace("\"types\":", "\"placements\": [ { \"path\": \"/Catalog\" } ], \"types\":");
         Assert.Contains("newParentPath", Assert.Throws<InvalidDataException>(() => SiteProfile.Load(Write(missing))).Message);
     }
+
+    [Theory]
+    [InlineData("Settings")]
+    [InlineData("/")]
+    [InlineData("/Settings/Sub")]
+    [InlineData("/Set tings")]
+    [InlineData("//Settings")]
+    public void Rejects_a_settings_folder_path_that_is_not_one_slash_and_one_segment(string path)
+    {
+        var json = ValidJson.Replace("\"types\":", $"\"settingsFolder\": {{ \"path\": \"{path}\", \"name\": \"Settings\" }}, \"types\":");
+
+        var ex = Assert.Throws<InvalidDataException>(() => SiteProfile.Load(Write(json)));
+
+        Assert.Contains("settingsFolder", ex.Message);
+    }
+
+    [Fact]
+    public void Placements_are_empty_when_a_profile_is_built_in_code()
+    {
+        var profile = new SiteProfile("x", [], [], [], [], [], [], [], [], null);
+
+        Assert.Empty(profile.Placements);
+    }
+
+    [Fact]
+    public void Rejects_an_unknown_key_and_names_it()
+    {
+        var json = ValidJson.Replace("\"name\": \"sample\",", "\"name\": \"sample\", \"ownHost\": [],");
+
+        var ex = Assert.Throws<InvalidDataException>(() => SiteProfile.Load(Write(json)));
+
+        Assert.Contains("ownHost", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_an_unknown_key_in_a_nested_rule()
+    {
+        var json = ValidJson.Replace("\"publish\": false", "\"publish\": false, \"pubIish\": true");
+
+        var ex = Assert.Throws<InvalidDataException>(() => SiteProfile.Load(Write(json)));
+
+        Assert.Contains("pubIish", ex.Message);
+    }
+
+    [Fact]
+    public void Every_profile_in_the_repository_loads()
+    {
+        var files = Directory.GetFiles(Support.RepoPaths.Combine("profiles"), "*.json");
+
+        Assert.NotEmpty(files);
+        foreach (var file in files)
+        {
+            Assert.NotNull(SiteProfile.Load(file));
+        }
+    }
 }

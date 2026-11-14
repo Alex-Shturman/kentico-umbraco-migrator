@@ -10,7 +10,7 @@ namespace UmbracoSite.Migration;
 /// An old URL that is also the URL of a page without a template (a migrated folder, for example the old alias
 /// <c>/products</c> next to the folder <c>/Products</c>) would answer 404: Umbraco finds the folder, has no template to
 /// render it with, and never reaches its redirect finder. This finder runs before the URL finder and, only when the page
-/// found at the request path has no template and a redirect is registered for that path, answers with that redirect.
+/// found at the request path has no template and a redirect is registered for that path to a page that has a template, answers with that redirect.
 /// Every other request is left to the normal finders, so folders without a redirect still answer 404.
 /// Limitation: it looks routes up without a domain root, like the redirects the migrator registers, so it is meant for a site
 /// without configured domains (the host in this repository).
@@ -61,7 +61,7 @@ public sealed class TemplateLessRedirectFinder : IContentFinder
 
         var redirect = _redirectUrlService.GetMostRecentRedirectUrl(route);
         var target = redirect is null ? null : umbracoContext.Content?.GetById(redirect.ContentKey);
-        if (target is null || target.Key == found.Key)
+        if (target is null || target.Key == found.Key || target.TemplateId is not > 0)
         {
             return Task.FromResult(false);
         }

@@ -89,4 +89,27 @@ public sealed class PlanBuilderPlacementTests
 
         Assert.DoesNotContain(PlanAliases.NaviHide, Doc(plan, "/Catalog").Values.Keys);
     }
+
+    [Fact]
+    public void Two_placements_of_the_same_path_are_a_plan_error()
+    {
+        var profile = SampleProfile() with
+        {
+            Placements = [new PlacementRule("/Catalog/Brands", "/", "one"), new PlacementRule("/Catalog/Brands", "/", "two")],
+        };
+
+        var plan = Build(profile);
+
+        Assert.Contains(plan.Issues, i => i.Severity == PlanSeverities.Error && i.OldPath == "/Catalog/Brands" && i.Message == "Duplicate placement for this path.");
+    }
+
+    [Fact]
+    public void Placement_that_creates_a_cycle_says_so_without_claiming_the_page_is_moved()
+    {
+        var profile = SampleProfile() with { Placements = [new PlacementRule("/Catalog", "/Catalog/Products", null)] };
+
+        var plan = Build(profile);
+
+        Assert.Contains(plan.Issues, i => i.Severity == PlanSeverities.Error && i.Message == "Re-parenting or a placement creates a cycle.");
+    }
 }

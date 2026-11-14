@@ -73,12 +73,21 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         readSite = site;
         readCounts = sourceBefore;
 
-        var plan = await Timed(timings, Phases.Plan, () =>
+        MigrationPlan plan;
+        try
         {
-            var built = PlanBuilder.Build(site, request.Profile, request.MediaFileExists);
-            var errors = built.Issues.Count(i => i.Severity == PlanSeverities.Error);
-            return Task.FromResult((built, $"{built.Documents.Count} pages, {built.Skipped.Count} skipped, {errors} errors"));
-        }).ConfigureAwait(false);
+            plan = await Timed(timings, Phases.Plan, () =>
+            {
+                var built = PlanBuilder.Build(site, request.Profile, request.MediaFileExists);
+                var errors = built.Issues.Count(i => i.Severity == PlanSeverities.Error);
+                return Task.FromResult((built, $"{built.Documents.Count} pages, {built.Skipped.Count} skipped, {errors} errors"));
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            return FailEarly(Phases.Plan, ex);
+        }
+
         builtPlan = plan;
 
         // Nothing was written yet: a failure in the read phase or the first snapshot is a run that never started (exit code 2).
@@ -87,7 +96,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         {
             var reason = ex is OperationCanceledException && ct.IsCancellationRequested ? "cancelled" : ApiErrors.Describe(ex);
             output.WriteLine($"{phase} failed: {reason}");
-            extraIssues.Add(new PlanIssue(PlanSeverities.Error, phase == Phases.Read ? "source" : "target", $"The {phase} phase failed: {reason}"));
+            extraIssues.Add(new PlanIssue(PlanSeverities.Error, phase switch { Phases.Read => "source", Phases.Plan => "plan", _ => "target" }, $"The {phase} phase failed: {reason}"));
             Finish(ExitCodes.ConfigurationOrPlanError, [], [], null, null, [], null);
             return ExitCodes.ConfigurationOrPlanError;
         }
