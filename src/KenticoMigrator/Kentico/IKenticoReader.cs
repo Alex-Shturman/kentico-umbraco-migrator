@@ -30,8 +30,6 @@ public sealed record SourceSite(
 /// <summary>A page type used by documents or listed in the profile.</summary>
 public sealed record SourcePageType(
     string ClassName,
-    string? TableName,
-    bool IsCoupled,
     IReadOnlyList<SourceField> Fields);
 
 /// <summary>
@@ -43,7 +41,6 @@ public sealed record SourceField(
     string Column,
     string DataType,
     int? Size,
-    string? Control,
     IReadOnlyList<string> Options,
     Guid FieldGuid);
 
@@ -88,10 +85,6 @@ public sealed record SourceAttachment(
     string FileName,
     string Extension,
     string MimeType,
-    long Size,
-    int? Width,
-    int? Height,
-    string? Title,
     string? FieldColumn,
     bool IsUnsorted,
     int Order);
@@ -107,9 +100,7 @@ public sealed record SourceMediaFile(
     string FilePath,
     string FileName,
     string Extension,
-    string MimeType,
-    long Size,
-    string? Title);
+    string MimeType);
 
 /// <summary>A row of a profile-listed class that has no document.</summary>
 public sealed record SourceRow(int Id, IReadOnlyDictionary<string, object?> Values);

@@ -25,7 +25,7 @@ public sealed record SiteProfile(
     public static readonly FrozenSet<string> KnownEditors = new[]
     {
         "TextBox", "TextArea", "RichText", "Integer", "Decimal", "TrueFalse", "DateTime", "Tags",
-        "MediaSingle", "MediaMultiple", "DropDown",
+        EditorNames.MediaSingle, EditorNames.MediaMultiple, "DropDown",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -188,6 +188,13 @@ public sealed record SiteProfile(
             throw new InvalidDataException($"In {where}: required value '{property}' is missing or empty.");
         }
     }
+}
+
+/// <summary>Editor names of <see cref="FieldMapping.Editor"/> that the code itself branches on.</summary>
+public static class EditorNames
+{
+    public const string MediaSingle = "MediaSingle";
+    public const string MediaMultiple = "MediaMultiple";
 }
 
 /// <summary>Maps a Kentico page type (optionally one path) to an Umbraco document type.</summary>

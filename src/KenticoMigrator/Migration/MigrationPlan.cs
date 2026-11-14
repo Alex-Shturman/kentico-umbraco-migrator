@@ -103,7 +103,6 @@ public static class SkipCategories
 {
     public const string ApplicationPage = "application page";
     public const string HostFile = "host file";
-    public const string AttachmentHistory = "attachment history";
     public const string WildcardRoute = "wildcard route";
     public const string MissingFile = "missing file";
     public const string UnmappedType = "unmapped type";

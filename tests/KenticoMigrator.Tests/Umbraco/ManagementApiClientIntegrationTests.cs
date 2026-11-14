@@ -26,8 +26,8 @@ public sealed class ManagementApiClientIntegrationTests
         Assert.SkipWhen(string.IsNullOrEmpty(secret), "Umbraco:ClientSecret is not configured.");
 
         var client = ManagementApiClient.Create(new UmbracoOptions(
-            config["Umbraco:BaseUrl"] ?? "https://localhost:44317",
-            config["Umbraco:ClientId"] ?? "umbraco-back-office-migrator",
+            config["Umbraco:BaseUrl"] ?? UmbracoOptions.DefaultBaseUrl,
+            config["Umbraco:ClientId"] ?? UmbracoOptions.DefaultClientId,
             secret!,
             AllowUntrustedCertificate: true));
 

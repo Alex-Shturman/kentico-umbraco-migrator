@@ -42,8 +42,8 @@ internal static class EditorCatalog
         ["TrueFalse"] = new("True/false", "Umbraco.TrueFalse", "Umb.PropertyEditorUi.Toggle", true),
         ["DateTime"] = new("Date Picker with time", "Umbraco.DateTime", "Umb.PropertyEditorUi.DatePicker", true),
         ["Tags"] = new("Tags", "Umbraco.Tags", "Umb.PropertyEditorUi.Tags", true),
-        ["MediaSingle"] = new("Media Picker", "Umbraco.MediaPicker3", "Umb.PropertyEditorUi.MediaPicker", true),
-        ["MediaMultiple"] = new("Multiple Media Picker", "Umbraco.MediaPicker3", "Umb.PropertyEditorUi.MediaPicker", true),
+        [EditorNames.MediaSingle] = new("Media Picker", "Umbraco.MediaPicker3", "Umb.PropertyEditorUi.MediaPicker", true),
+        [EditorNames.MediaMultiple] = new("Multiple Media Picker", "Umbraco.MediaPicker3", "Umb.PropertyEditorUi.MediaPicker", true),
         [Dropdown] = new("Dropdown", "Umbraco.DropDown.Flexible", "Umb.PropertyEditorUi.Dropdown", false),
     };
 
@@ -120,7 +120,7 @@ public sealed partial class PlanBuilder
                 spec.DataTypeName,
                 spec.EditorAlias,
                 spec.EditorUiAlias,
-                editor == "MediaMultiple"
+                editor == EditorNames.MediaMultiple
                     ? new Dictionary<string, object?> { ["multiple"] = true }
                     : new Dictionary<string, object?>(),
                 spec.IsBuiltIn));

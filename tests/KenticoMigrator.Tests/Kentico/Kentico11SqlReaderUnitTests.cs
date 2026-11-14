@@ -53,7 +53,7 @@ public sealed class Kentico11SqlReaderMediaPathTests : IDisposable
     public void Dispose() => Directory.Delete(Path.GetDirectoryName(_root)!, recursive: true);
 
     private static SourceMediaFile File_(string folder, string path) =>
-        new(Guid.NewGuid(), "Gallery", folder, path, "a.txt", "txt", "text/plain", 5, null);
+        new(Guid.NewGuid(), "Gallery", folder, path, "a.txt", "txt", "text/plain");
 
     private static Kentico11SqlReader Reader(string root) =>
         new("Server=db.example;Database=x;User Id=u;Password=p", root);

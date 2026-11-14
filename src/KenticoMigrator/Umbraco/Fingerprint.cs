@@ -111,9 +111,9 @@ internal static class PlannedShape
                 return raw is not null && System.Convert.ToString(raw, CultureInfo.InvariantCulture) is { Length: > 0 } choice
                     ? new JsonArray(JsonValue.Create(choice))
                     : null;
-            case "MediaSingle":
+            case EditorNames.MediaSingle:
                 return raw is Guid single ? Picker(ownerKey, alias, [single]) : null;
-            case "MediaMultiple":
+            case EditorNames.MediaMultiple:
                 return raw is IEnumerable<Guid> many ? Picker(ownerKey, alias, [.. many]) : null;
             default:
                 throw new MappingException(alias, "The editor has no write shape.");

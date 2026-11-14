@@ -6,7 +6,7 @@ namespace KenticoMigrator.Tests.Umbraco;
 
 public sealed class ManagementApiClientTests
 {
-    private static readonly UmbracoOptions Options = new("https://umbraco.test", "umbraco-back-office-migrator", "secret");
+    private static readonly UmbracoOptions Options = new("https://umbraco.test", UmbracoOptions.DefaultClientId, "secret");
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 

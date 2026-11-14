@@ -10,11 +10,11 @@ internal static class SourceFactory
 
     public static SiteProfile SampleProfile() => SiteProfile.Load(RepoPaths.Combine("profiles", "sample.json"));
 
-    public static SourceField Field(string column, string dataType = "text", string? control = null, params string[] options) =>
-        new(column, dataType, null, control, options, GuidFor(column.GetHashCode() & 0xFFFF));
+    public static SourceField Field(string column, string dataType = "text", params string[] options) =>
+        new(column, dataType, null, options, GuidFor(column.GetHashCode() & 0xFFFF));
 
     public static SourcePageType Type(string className, params SourceField[] fields) =>
-        new(className, null, fields.Length > 0, fields);
+        new(className, fields);
 
     public static IReadOnlyList<SourcePageType> SampleTypes() =>
     [
@@ -24,7 +24,7 @@ internal static class SourceFactory
         Type("DEMO.Brand", Field("Name"), Field("HeaderText"), Field("TopText", "longtext"), Field("BottomText", "longtext"),
             Field("Synonyms"), Field("MetaTitle"), Field("MetaDescription"), Field("MetaKeywords"), Field("Order", "integer")),
         Type("DEMO.Product", Field("ProductName"), Field("Featured", "boolean"), Field("ShippingInformation", "longtext"),
-            Field("ShippingImage", "text", "RadioButtonsControl", "standard", "express"), Field("Images", "docattachments")),
+            Field("ShippingImage", "text", "standard", "express"), Field("Images", "docattachments")),
     ];
 
     /// <summary>Alias is the last segment of <paramref name="aliasPath"/> unless given.</summary>
@@ -64,10 +64,10 @@ internal static class SourceFactory
         bool unsorted = false,
         int order = 0,
         string extension = ".jpg") =>
-        new(guid, nodeId, fileName, extension, "image/jpeg", 1000, 10, 10, null, fieldColumn, unsorted, order);
+        new(guid, nodeId, fileName, extension, "image/jpeg", fieldColumn, unsorted, order);
 
     public static SourceMediaFile MediaFile(Guid guid, string library, string filePath, string extension = ".jpg") =>
-        new(guid, library, library, filePath, filePath[(filePath.LastIndexOf('/') + 1)..], extension, "image/jpeg", 1000, null);
+        new(guid, library, library, filePath, filePath[(filePath.LastIndexOf('/') + 1)..], extension, "image/jpeg");
 
     public static EditableRegion Region(string id, string html) => new(id, html);
 

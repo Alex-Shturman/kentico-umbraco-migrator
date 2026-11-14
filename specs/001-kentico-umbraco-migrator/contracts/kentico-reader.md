@@ -39,9 +39,9 @@ Tables and columns relied on (the sample script must contain at least these):
 | `CMS_Document` | `DocumentID`, `DocumentNodeID`, `DocumentName`, `DocumentCulture`, `DocumentForeignKeyValue`, `DocumentPageTitle`, `DocumentPageDescription`, `DocumentPageKeyWords`, `DocumentMenuItemHideInNavigation`, `DocumentShowInSiteMap`, `DocumentCanBePublished`, `DocumentPublishFrom`, `DocumentPublishTo`, `DocumentCreatedWhen`, `DocumentModifiedWhen`, `DocumentUrlPath`, `DocumentExtensions`, `DocumentContent`, `DocumentPageTemplateID` |
 | `CMS_PageTemplate` | `PageTemplateID`, `PageTemplateWebParts` |
 | `CMS_DocumentAlias` | `AliasID`, `AliasNodeID`, `AliasURLPath`, `AliasWildcardRule`, `AliasCulture` |
-| `CMS_Attachment` | `AttachmentGUID`, `AttachmentDocumentID`, `AttachmentName`, `AttachmentExtension`, `AttachmentMimeType`, `AttachmentSize`, `AttachmentImageWidth`, `AttachmentImageHeight`, `AttachmentTitle`, `AttachmentBinary`, `AttachmentGroupGUID`, `AttachmentIsUnsorted`, `AttachmentOrder` |
+| `CMS_Attachment` | `AttachmentGUID`, `AttachmentDocumentID`, `AttachmentName`, `AttachmentExtension`, `AttachmentMimeType`, `AttachmentBinary`, `AttachmentGroupGUID`, `AttachmentIsUnsorted`, `AttachmentOrder` |
 | `Media_Library` | `LibraryID`, `LibraryName`, `LibraryFolder`, `LibrarySiteID` |
-| `Media_File` | `FileGUID`, `FileLibraryID`, `FilePath`, `FileName`, `FileExtension`, `FileMimeType`, `FileSize`, `FileTitle` |
+| `Media_File` | `FileGUID`, `FileLibraryID`, `FilePath`, `FileName`, `FileExtension`, `FileMimeType` |
 | `COM_SKU` | `SKUID`, `SKUNumber`, `SKUPrice`, `SKURetailPrice`, `SKUAvailableItems`, `SKUEnabled` |
 | Coupled tables | primary key column per form definition, plus all mapped columns |
 

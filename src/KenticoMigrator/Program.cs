@@ -6,9 +6,6 @@ using KenticoMigrator.Umbraco;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
-const string DefaultBaseUrl = "https://localhost:44317";
-const string DefaultClientId = "umbraco-back-office-migrator";
-
 using var cancellation = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
 {
@@ -52,10 +49,10 @@ try
         // of host/README.md (the quickstart sets only the two secrets).
         if (!string.IsNullOrWhiteSpace(config["Umbraco:ClientSecret"]))
         {
-            var baseUrl = config["Umbraco:BaseUrl"] is { Length: > 0 } url ? url : DefaultBaseUrl;
+            var baseUrl = config["Umbraco:BaseUrl"] is { Length: > 0 } url ? url : UmbracoOptions.DefaultBaseUrl;
             client = ManagementApiClient.Create(new UmbracoOptions(
                 baseUrl,
-                config["Umbraco:ClientId"] is { Length: > 0 } id ? id : DefaultClientId,
+                config["Umbraco:ClientId"] is { Length: > 0 } id ? id : UmbracoOptions.DefaultClientId,
                 config["Umbraco:ClientSecret"]!,
                 bool.TryParse(config["Umbraco:AllowUntrustedCertificate"], out var untrusted) && untrusted));
         }
@@ -63,7 +60,7 @@ try
         var runDir = cli.RunDir ?? Path.Combine("runs", DateTime.Now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture));
         Func<SourceMediaFile, bool>? mediaExists = string.IsNullOrWhiteSpace(mediaRoot)
             ? null
-            : file => File.Exists(Path.Combine(mediaRoot, file.LibraryFolder, file.FilePath));
+            : file => MediaPaths.Exists(mediaRoot, file);
 
         var runner = new MigrationRunner(reader, client is null ? null : new UmbracoApi(client), Console.Out);
         var exit = await runner.RunAsync(new RunRequest(cli.Command, profile, runDir, cli.OverwriteEdited, mediaExists), cancellation.Token);

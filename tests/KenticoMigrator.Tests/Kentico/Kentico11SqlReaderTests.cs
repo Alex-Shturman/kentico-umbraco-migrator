@@ -63,15 +63,13 @@ public sealed class Kentico11SqlReaderTests
         var site = await ReadSiteAsync();
 
         var product = Assert.Single(site.PageTypes, t => t.ClassName == "DEMO.Product");
-        Assert.True(product.IsCoupled);
-        Assert.Equal("DEMO_Product", product.TableName);
         Assert.Equal(["ProductName", "Featured", "ShippingInformation", "ShippingImage", "Images"], product.Fields.Select(f => f.Column));
 
         var shipping = product.Fields.Single(f => f.Column == "ShippingImage");
         Assert.Equal(["standard", "freight"], shipping.Options);
         Assert.Equal("docattachments", product.Fields.Single(f => f.Column == "Images").DataType);
 
-        Assert.Contains(site.PageTypes, t => t is { ClassName: "CMS.Root", IsCoupled: false });
+        Assert.Contains(site.PageTypes, t => t is { ClassName: "CMS.Root", Fields.Count: 0 });
     }
 
     [IntegrationFact]
@@ -236,10 +234,6 @@ public sealed class Kentico11SqlReaderTests
         Assert.Equal("paddling-teaser.jpg", teaser.FileName);
         Assert.Equal("jpg", teaser.Extension);
         Assert.Equal("image/jpeg", teaser.MimeType);
-        Assert.Equal(96, teaser.Width);
-        Assert.Equal(64, teaser.Height);
-        Assert.Equal("Paddling teaser", teaser.Title);
-        Assert.True(teaser.Size > 0);
     }
 
     [IntegrationFact]
@@ -281,7 +275,7 @@ public sealed class Kentico11SqlReaderTests
         var dock = site.MediaFiles.Single(f => f.FilePath == "dock.jpg");
         await using (var stream = await reader.OpenMediaFileAsync(dock, CancellationToken.None))
         {
-            Assert.Equal(dock.Size, stream.Length);
+            Assert.True(stream.Length > 0);
             Assert.Equal(0xFF, stream.ReadByte()); // JPEG start of image
             Assert.Equal(0xD8, stream.ReadByte());
         }
@@ -309,7 +303,7 @@ public sealed class Kentico11SqlReaderTests
 
         await using var stream = await reader.OpenAttachmentAsync(teaser.AttachmentGuid, CancellationToken.None);
 
-        Assert.Equal(teaser.Size, stream.Length);
+        Assert.True(stream.Length > 0);
         Assert.Equal(0xFF, stream.ReadByte());
         Assert.Equal(0xD8, stream.ReadByte());
 

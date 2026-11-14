@@ -64,7 +64,6 @@ public static class FormDefinition
                 column,
                 ((string?)field.Attribute("columntype") ?? string.Empty).ToLowerInvariant(),
                 size,
-                control,
                 ParseOptions(field, control),
                 guid));
         }

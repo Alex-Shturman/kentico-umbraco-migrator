@@ -323,15 +323,15 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
     // Takes the media items that failed out of the picker values of a page.
     private static TargetDocument WithoutMedia(TargetDocument doc, IReadOnlySet<Guid> failed)
     {
-        if (failed.Count == 0 || !doc.Values.Values.Any(v => v.Editor is "MediaSingle" or "MediaMultiple"))
+        if (failed.Count == 0 || !doc.Values.Values.Any(v => v.Editor is EditorNames.MediaSingle or EditorNames.MediaMultiple))
         {
             return doc;
         }
 
         PlannedValue Strip(PlannedValue value) => value switch
         {
-            { Editor: "MediaSingle", Raw: Guid key } when failed.Contains(key) => value with { Raw = null },
-            { Editor: "MediaMultiple", Raw: IEnumerable<Guid> keys } => value with { Raw = keys.Where(k => !failed.Contains(k)).ToArray() },
+            { Editor: EditorNames.MediaSingle, Raw: Guid key } when failed.Contains(key) => value with { Raw = null },
+            { Editor: EditorNames.MediaMultiple, Raw: IEnumerable<Guid> keys } => value with { Raw = keys.Where(k => !failed.Contains(k)).ToArray() },
             _ => value,
         };
 

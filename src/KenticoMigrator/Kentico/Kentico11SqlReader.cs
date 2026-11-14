@@ -67,7 +67,7 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
 
         var unlinked = ReadUnlinkedRows(classes, coupled, nodes, unlinkedRowClasses);
         var pageTypes = classes.Values
-            .Select(c => new SourcePageType(c.ClassName, c.TableName, c.IsCoupled, c.Fields))
+            .Select(c => new SourcePageType(c.ClassName, c.Fields))
             .OrderBy(t => t.ClassName, StringComparer.Ordinal)
             .ToList();
 
@@ -113,21 +113,7 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
             throw new InvalidOperationException("Kentico:MediaRoot is not configured; media library files cannot be opened.");
         }
 
-        // The library folder and path come from the database: keep them inside the media root.
-        // A rooted value would make Path.Combine drop the root, so it is rejected up front.
-        if (IsRooted(file.LibraryFolder) || IsRooted(file.FilePath))
-        {
-            throw new InvalidDataException($"Media file path '{file.LibraryFolder}/{file.FilePath}' must be relative.");
-        }
-
-        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_mediaRoot));
-        var path = Path.GetFullPath(Path.Combine(root, file.LibraryFolder, file.FilePath));
-        // A filesystem root ("/") keeps its separator after trimming, so do not add a second one.
-        var prefix = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
-        if (!path.StartsWith(prefix, StringComparison.Ordinal))
-        {
-            throw new InvalidDataException($"Media file path '{file.FilePath}' points outside the media root.");
-        }
+        var path = MediaPaths.Resolve(_mediaRoot, file);
 
         if (!File.Exists(path))
         {
@@ -228,9 +214,6 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
 
         return new SiteScope(version, sites[0].SiteId, sites[0].SiteName);
     }
-
-    private static bool IsRooted(string path) =>
-        Path.IsPathRooted(path) || path.StartsWith('/') || path.StartsWith('\\');
 
     /// <summary>Page types used by at least one node, plus those named in the profile.</summary>
     private static async Task<Dictionary<int, ClassInfo>> ReadClassesAsync(
@@ -371,8 +354,8 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
     {
         var rows = await connection.QueryAsync<AttachmentRow>(new CommandDefinition(
             """
-            SELECT AttachmentGUID, AttachmentDocumentID, AttachmentName, AttachmentExtension, AttachmentMimeType, AttachmentSize,
-                   AttachmentImageWidth, AttachmentImageHeight, AttachmentTitle, AttachmentIsUnsorted, AttachmentOrder, AttachmentGroupGUID
+            SELECT AttachmentGUID, AttachmentDocumentID, AttachmentName, AttachmentExtension, AttachmentMimeType,
+                   AttachmentIsUnsorted, AttachmentOrder, AttachmentGroupGUID
             FROM CMS_Attachment
             WHERE AttachmentDocumentID IS NOT NULL
             """, cancellationToken: ct));
@@ -404,10 +387,6 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
                 row.AttachmentName,
                 NormalizeExtension(row.AttachmentExtension),
                 row.AttachmentMimeType,
-                row.AttachmentSize,
-                row.AttachmentImageWidth,
-                row.AttachmentImageHeight,
-                string.IsNullOrWhiteSpace(row.AttachmentTitle) ? null : row.AttachmentTitle,
                 column,
                 row.AttachmentIsUnsorted ?? false,
                 row.AttachmentOrder ?? 0));
@@ -440,7 +419,7 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
     {
         var rows = await connection.QueryAsync<MediaFileRow>(new CommandDefinition(
             """
-            SELECT f.FileGUID, l.LibraryName, l.LibraryFolder, f.FilePath, f.FileName, f.FileExtension, f.FileMimeType, f.FileSize, f.FileTitle
+            SELECT f.FileGUID, l.LibraryName, l.LibraryFolder, f.FilePath, f.FileName, f.FileExtension, f.FileMimeType
             FROM Media_File f
             JOIN Media_Library l ON l.LibraryID = f.FileLibraryID
             WHERE l.LibrarySiteID = @siteId
@@ -455,9 +434,7 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
             r.FilePath.Replace('\\', '/'),
             r.FileName + r.FileExtension,
             NormalizeExtension(r.FileExtension),
-            r.FileMimeType,
-            r.FileSize,
-            string.IsNullOrWhiteSpace(r.FileTitle) ? null : r.FileTitle)).ToList();
+            r.FileMimeType)).ToList();
     }
 
     /// <summary>Extensions are returned lower case without the leading dot.</summary>
@@ -548,10 +525,6 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         string AttachmentName,
         string AttachmentExtension,
         string AttachmentMimeType,
-        int AttachmentSize,
-        int? AttachmentImageWidth,
-        int? AttachmentImageHeight,
-        string? AttachmentTitle,
         bool? AttachmentIsUnsorted,
         int? AttachmentOrder,
         Guid? AttachmentGroupGUID);
@@ -565,9 +538,7 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         string FilePath,
         string FileName,
         string FileExtension,
-        string FileMimeType,
-        long FileSize,
-        string? FileTitle);
+        string FileMimeType);
 
     private sealed record SiteScope(string Version, int SiteId, string SiteName);
 

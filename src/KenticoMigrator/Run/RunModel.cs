@@ -32,7 +32,6 @@ public static class Phases
     public const string Documents = "documents";
     public const string Redirects = "redirects";
     public const string Verify = "verify";
-    public const string Report = "report";
 }
 
 public sealed record PhaseTiming(string Phase, TimeSpan Elapsed);

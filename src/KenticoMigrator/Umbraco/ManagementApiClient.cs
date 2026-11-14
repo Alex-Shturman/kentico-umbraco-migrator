@@ -14,6 +14,12 @@ public sealed record UmbracoOptions(
     string ClientSecret,
     bool AllowUntrustedCertificate = false)
 {
+    /// <summary>The local host of host/README.md; used when <c>Umbraco:BaseUrl</c> is empty.</summary>
+    public const string DefaultBaseUrl = "https://localhost:44317";
+
+    /// <summary>The API user the host seeds in Development; used when <c>Umbraco:ClientId</c> is empty.</summary>
+    public const string DefaultClientId = "umbraco-back-office-migrator";
+
     /// <summary>
     /// The client secret travels in every token request, so <see cref="BaseUrl"/> must be an absolute https URL; plain http is
     /// accepted for the loopback host only. Throws <see cref="InvalidDataException"/> (exit code 2) without echoing the value.

@@ -29,8 +29,6 @@ public sealed class FormDefinitionTests
         Assert.Equal(["text", "decimal", "longtext"], fields.Select(f => f.DataType));
         Assert.Equal(200, fields[0].Size);
         Assert.Null(fields[1].Size);
-        Assert.Equal("TextBoxControl", fields[0].Control);
-        Assert.Equal("HtmlAreaControl", fields[2].Control);
     }
 
     [Fact]
