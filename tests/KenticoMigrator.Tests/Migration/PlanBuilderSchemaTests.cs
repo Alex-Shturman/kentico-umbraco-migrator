@@ -86,6 +86,27 @@ public sealed class PlanBuilderSchemaTests
         Assert.Equal(plan.DataTypes.Count, plan.DataTypes.Select(d => d.Key).Distinct().Count());
     }
 
+    // Verified on Umbraco 17 (research R7): these built-in data types exist; there is no built-in Decimal.
+    private static readonly string[] VerifiedBuiltInNames =
+        ["Textstring", "Textarea", "Richtext editor", "Numeric", "True/false", "Date Picker with time", "Tags", "Dropdown", "Media Picker", "Multiple Media Picker"];
+
+    [Fact]
+    public void Built_in_data_types_use_only_verified_umbraco_names()
+    {
+        var site = SourceFactory.SampleSite();
+        var profile = SourceFactory.SampleProfile();
+        var editors = new[] { "TextBox", "TextArea", "RichText", "Integer", "TrueFalse", "DateTime", "Tags", "MediaSingle", "MediaMultiple" };
+        var fields = editors.Select(e => new FieldMapping("Name", "p" + e, e, "G")).ToList();
+        var broken = profile with { Types = [profile.Types[0] with { Fields = fields }] };
+
+        var plan = PlanBuilder.Build(site, broken);
+
+        var builtIns = plan.DataTypes.Where(d => d.IsBuiltIn).Select(d => d.Name).ToList();
+        Assert.Equal(editors.Length, builtIns.Count);
+        Assert.All(builtIns, name => Assert.Contains(name, VerifiedBuiltInNames));
+        Assert.Contains("Media Picker", builtIns);
+    }
+
     [Fact]
     public void Templates_are_a_layout_and_one_page_template()
     {

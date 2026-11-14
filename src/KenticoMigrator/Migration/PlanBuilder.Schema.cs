@@ -23,7 +23,7 @@ internal static class PlanAliases
 
 /// <summary>
 /// Umbraco side of each profile editor. Names, aliases and UI aliases of the built-in data types are
-/// verified against a running Umbraco 17 host by research R7; change them here only.
+/// verified on Umbraco 17 (research R7); change them here only.
 /// </summary>
 internal sealed record EditorSpec(string DataTypeName, string EditorAlias, string EditorUiAlias, bool IsBuiltIn);
 
@@ -41,7 +41,7 @@ internal static class EditorCatalog
         ["TrueFalse"] = new("True/false", "Umbraco.TrueFalse", "Umb.PropertyEditorUi.Toggle", true),
         ["DateTime"] = new("Date Picker with time", "Umbraco.DateTime", "Umb.PropertyEditorUi.DatePicker", true),
         ["Tags"] = new("Tags", "Umbraco.Tags", "Umb.PropertyEditorUi.Tags", true),
-        ["MediaSingle"] = new("Image Media Picker", "Umbraco.MediaPicker3", "Umb.PropertyEditorUi.MediaPicker", true),
+        ["MediaSingle"] = new("Media Picker", "Umbraco.MediaPicker3", "Umb.PropertyEditorUi.MediaPicker", true),
         ["MediaMultiple"] = new("Multiple Media Picker", "Umbraco.MediaPicker3", "Umb.PropertyEditorUi.MediaPicker", true),
         [Dropdown] = new("Dropdown", "Umbraco.DropDown.Flexible", "Umb.PropertyEditorUi.Dropdown", false),
     };
