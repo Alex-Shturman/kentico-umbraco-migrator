@@ -50,6 +50,7 @@ public sealed record SourceField(
 /// <summary>
 /// A page. <paramref name="Fields"/> is keyed by column name of the coupled table; <paramref name="Regions"/>
 /// is in template order; <paramref name="IsPublished"/> follows research R5a.
+/// <paramref name="LinkedNodeId"/> is <c>NodeLinkedNodeID</c>; a linked node is skipped by the plan builder.
 /// </summary>
 public sealed record SourceDocument(
     Guid NodeGuid,
@@ -74,7 +75,8 @@ public sealed record SourceDocument(
     string? Extension,
     IReadOnlyDictionary<string, object?> Fields,
     IReadOnlyList<EditableRegion> Regions,
-    IReadOnlyDictionary<string, object?>? Sku);
+    IReadOnlyDictionary<string, object?>? Sku,
+    int? LinkedNodeId = null);
 
 /// <summary>An editable region; <paramref name="Html"/> is decoded exactly once.</summary>
 public sealed record EditableRegion(string Id, string Html);
