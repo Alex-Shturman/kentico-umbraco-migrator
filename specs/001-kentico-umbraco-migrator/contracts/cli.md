@@ -70,14 +70,14 @@ summary form, the path of the run folder, and the exit code. No field content is
   later run only when a child of that parent is written again. An order an editor sets is not undone by a run that writes nothing under
   that parent.
 - **Publishing.** A page is published after it is created or updated; the API client already retries server and network errors
-  on the publish call. A page that is still not published is reported as failed. A page that was never published is published
-  by a later run. An update whose publish is refused (a non-transient answer such as "parent not published") stays as pending
+  on the publish call. A page that is still not published is reported as failed. A later run never publishes a page that is not
+  published: it stays as it is, the outcome is `Unchanged` and the page is listed as a review item ("planned as published but
+  not published in Umbraco", with old path and key, in the Issues section of `report.md`). An update whose publish is refused (a non-transient answer such as "parent not published") stays as pending
   changes, is reported `Failed` on that run and `Unchanged` afterwards, because the tool never publishes pending changes (they may
   be an editor's held-back draft). After fixing the cause (for example by publishing the parent), publish the page in the back
   office, or change the page in Umbraco and re-run with `--overwrite-edited` (or change it in the source and re-run): the tool
-  then writes the page again and publishes it (verified end to end by `RerunEndToEndTests`). A page an editor unpublished is
-  published again by the next run when the plan says it is published: Umbraco clears the publish date on unpublish, so the
-  tool cannot tell it from a page that was never published. A page the plan does not publish is never published.
+  then writes the page again and publishes it (verified end to end by `RerunEndToEndTests`). A page an editor unpublished stays unpublished and is
+  listed as a review item. A page the plan does not publish is never published.
 - **Media.** Folders and files carry no stored fingerprint (research R5-media): an item whose name and folder are the planned ones
   is `Unchanged`; one an editor renamed or moved is reported as edited and left alone unless `--overwrite-edited` is given, which
   moves it back, uploads the file again and sets the planned name. A rename in the source is reported the same way. File bytes

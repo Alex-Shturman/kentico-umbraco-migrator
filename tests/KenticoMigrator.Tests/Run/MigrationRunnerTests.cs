@@ -382,6 +382,26 @@ public sealed class MigrationRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_page_planned_as_published_but_unpublished_stays_so_and_is_listed_in_the_report()
+    {
+        var api = NewApi();
+        var plan = PlanBuilder.Build(SampleSite(), SampleProfile());
+        var about = plan.Documents.Single(d => d.OldPath == "/About");
+        await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+        await api.SendAsync(HttpMethod.Put, $"/document/{about.Key:D}/unpublish", new { cultures = (string[]?)null }, Ct);
+        api.Calls.Clear();
+
+        var exit = await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.Success, exit);
+        Assert.DoesNotContain(api.Writes, c => c.Path.EndsWith("/publish", StringComparison.Ordinal));
+        Assert.Equal("Draft", api.Stored("document", about.Key)!["variants"]![0]!["state"]!.GetValue<string>());
+        var report = File.ReadAllText(Path.Combine(_runDir, "report.md"));
+        Assert.Contains($"/About: Page {about.Key:D} is planned as published but not published in Umbraco", report);
+        Assert.Contains("planned as published but not published in Umbraco, review: 1", _output.ToString());
+    }
+
+    [Fact]
     public async Task Failure_after_the_writes_still_writes_the_report_and_gives_exit_code_1()
     {
         var api = NewApi();

@@ -88,6 +88,33 @@ public sealed class RerunEndToEndTests
     }
 
     [Fact]
+    public async Task Page_an_editor_unpublished_stays_unpublished_and_is_listed_for_review()
+    {
+        using var host = EndToEndHost.Connect();
+        Assert.Equal(ExitCodes.Success, (await host.RunAsync(CliArguments.Migrate, ct: Ct)).ExitCode);
+        var page = (await TargetSnapshot.ReadAsync(host.Api, Ct)).Find("Home", "Articles", "Paddling basics");
+        var publish = new { publishSchedules = new[] { new { culture = (string?)null } } };
+
+        try
+        {
+            await host.Api.SendAsync(HttpMethod.Put, $"/document/{page.Key:D}/unpublish", new { cultures = (string[]?)null }, Ct);
+
+            var run = await host.RunAsync(CliArguments.Migrate, ct: Ct);
+
+            Assert.True(run.ExitCode == ExitCodes.Success, run.Output);
+            Assert.Equal("Unchanged", Assert.Single(EndToEndHost.Items(run), i => i.Kind == ItemKinds.Document && i.OldPath == "/Articles/Paddling-Basics").Outcome);
+            Assert.Equal("Draft", (await ReadPageAsync(host, page.Key)).State);
+            Assert.Contains(
+                $"/Articles/Paddling-Basics: Page {page.Key:D} is planned as published but not published in Umbraco",
+                File.ReadAllText(Path.Combine(run.RunDir, "report.md")));
+        }
+        finally
+        {
+            await host.Api.SendAsync(HttpMethod.Put, $"/document/{page.Key:D}/publish", publish, Ct);
+        }
+    }
+
+    [Fact]
     public async Task Refused_publish_is_failed_once_then_unchanged_and_overwrite_republishes_after_the_cause_is_fixed()
     {
         using var host = EndToEndHost.Connect();

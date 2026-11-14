@@ -171,6 +171,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
                 finally
                 {
                     links = documentSync.Links; // what was counted is reported even when the phase stopped early
+                    extraIssues.AddRange(documentSync.NotPublished);
                 }
 
                 var sorts = documents.Where(r => r.Kind == ItemKinds.Sort).ToList();
@@ -220,7 +221,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
 
         var items = schemaResults.Concat(mediaResults).Concat(documents).Concat(redirectFailures).ToList();
 
-        WriteSummaryLines(plan, items, missing, drops, links);
+        WriteSummaryLines(plan, items, missing, drops, links, extraIssues);
 
         var exit = drops.Count > 0 ? ExitCodes.CountDrop
             : stopped || items.Any(r => r.Outcome == ItemOutcome.Failed) ? ExitCodes.ItemErrors
@@ -294,7 +295,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
     }
 
     // Warnings in summary form: counts only, with old paths in the report files.
-    private void WriteSummaryLines(MigrationPlan plan, IReadOnlyList<ItemResult> items, IReadOnlyList<MissingInSource> missing, IReadOnlyList<CountDrop> drops, LinkStats links)
+    private void WriteSummaryLines(MigrationPlan plan, IReadOnlyList<ItemResult> items, IReadOnlyList<MissingInSource> missing, IReadOnlyList<CountDrop> drops, LinkStats links, IReadOnlyList<PlanIssue> issues)
     {
         if (plan.Skipped.Count > 0)
         {
@@ -310,6 +311,12 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
         if (links.Rewritten + links.External + links.ToApplication + links.Unresolved.Count > 0)
         {
             output.WriteLine($"links: {links.Rewritten} rewritten, {links.External} external, {links.ToApplication} to the application, {links.Unresolved.Count} unresolved (listed in report.md)");
+        }
+
+        var notPublished = issues.Count(i => i.Message.Contains(DocumentSync.NotPublishedMarker, StringComparison.Ordinal));
+        if (notPublished > 0)
+        {
+            output.WriteLine($"planned as published but not published in Umbraco, review: {notPublished} (listed in report.md)");
         }
 
         WriteEdited(items, ItemOutcome.EditedSkipped, "edited in Umbraco, not updated");

@@ -18,6 +18,9 @@ public sealed record SyncOptions(bool OverwriteEdited = false, bool Preview = fa
 /// </summary>
 public sealed class DocumentSync
 {
+    /// <summary>Text of the review item of a page that is planned as published but is not (the runner counts items by it).</summary>
+    public const string NotPublishedMarker = "is planned as published but not published in Umbraco";
+
     private const int UrlBatchSize = 50;
 
     private static readonly Guid RootKey = Guid.Empty;
@@ -31,6 +34,7 @@ public sealed class DocumentSync
     private readonly Dictionary<Guid, List<Guid>> _children = [];
     private readonly RichTextRewriter? _rewriter;
     private readonly LinkCounter _links = new();
+    private readonly List<PlanIssue> _notPublished = [];
 
     /// <param name="rewriter">Rewrites links in rich text; null writes rich text as planned. Not thread-safe, like the sync.</param>
     public DocumentSync(IUmbracoApi api, IReadOnlyList<TargetDocumentType> types, IReadOnlyList<TargetTemplate> templates, RichTextRewriter? rewriter = null)
@@ -41,6 +45,12 @@ public sealed class DocumentSync
         _types = types.ToDictionary(t => t.Alias, StringComparer.Ordinal);
         _templateKeys = templates.ToDictionary(t => t.Alias, t => t.Key, StringComparer.Ordinal);
     }
+
+    /// <summary>
+    /// Review items of the last <see cref="SyncAsync"/>: pages planned as published that are not published in Umbraco and were
+    /// left alone (warnings with the old path and key, never values).
+    /// </summary>
+    public IReadOnlyList<PlanIssue> NotPublished => _notPublished;
 
     /// <summary>Link totals and unresolved links of the pages of the last <see cref="SyncAsync"/> (all zero without a rewriter).</summary>
     public LinkStats Links => _links.ToStats();
@@ -57,6 +67,7 @@ public sealed class DocumentSync
 
         results ??= new List<ItemResult>(documents.Count);
         _links.Clear();
+        _notPublished.Clear();
         foreach (var doc in ParentsFirst(documents))
         {
             try
@@ -158,12 +169,12 @@ public sealed class DocumentSync
 
         if (storedFingerprint == plannedFingerprint)
         {
-            // A page that should be published but never was (an earlier publish failed) is published now. A page an editor
-            // unpublished keeps its publish date and is left alone, and pending changes are never published: they may be an
-            // editor's held-back draft (FR-015a).
-            if (doc.Publish && NeverPublished(current))
+            // The first publish happens in the run that creates or updates the page; a refusal is a failure of that run. A re-run
+            // never publishes: a page that is not published now was unpublished by an editor or its publish was refused, and pending
+            // changes may be an editor's held-back draft (FR-015a). It is only listed for review.
+            if (doc.Publish && IsNotPublished(current))
             {
-                return options.Preview ? ItemOutcome.WouldUpdate : await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
+                _notPublished.Add(new PlanIssue(PlanSeverities.Warning, doc.OldPath, $"Page {doc.Key:D} {NotPublishedMarker}; publish it in the back office, or change the page and re-run with --overwrite-edited."));
             }
 
             return ItemOutcome.Unchanged;
@@ -370,8 +381,9 @@ public sealed class DocumentSync
         document["values"]?.AsArray()
             .FirstOrDefault(v => v?["alias"]?.GetValue<string>() == PlanAliases.Fingerprint)?["value"]?.GetValue<string>();
 
-    private static bool NeverPublished(JsonNode document) =>
-        document["variants"]?.AsArray().FirstOrDefault()?["publishDate"] is null;
+    // Draft: never published or unpublished (Umbraco clears the publish date on unpublish, so the two look alike).
+    private static bool IsNotPublished(JsonNode document) =>
+        document["variants"]?.AsArray().FirstOrDefault()?["state"]?.GetValue<string>() is "Draft" or "NotCreated";
 
     private static string CurrentName(JsonNode document) =>
         document["variants"]?.AsArray().FirstOrDefault()?["name"]?.GetValue<string>() ?? string.Empty;

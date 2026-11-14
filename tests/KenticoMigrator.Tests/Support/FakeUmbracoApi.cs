@@ -218,6 +218,11 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
             var item = (JsonObject)node!;
             var id = Guid.Parse(item["id"]!.GetValue<string>());
             Items(parts[0])[id] = (JsonObject)item.DeepClone();
+            if (parts[0] == "document" && Stored("document", id)!["variants"]?[0] is JsonObject created)
+            {
+                created["state"] = "Draft"; // like the real read model: a new page is a draft until it is published
+            }
+
             if (parts[0] is "document" or "media")
             {
                 _parents[id] = item["parent"]?["id"]?.GetValue<string>() is { } p ? Guid.Parse(p) : null;
@@ -269,6 +274,15 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
             Stored(parts[1], key)!["isTrashed"] = false;
             _parents[key] = node?["target"]?["id"]?.GetValue<string>() is { } t ? Guid.Parse(t) : null;
             _order[key] = _nextOrder++;
+            return Ok(HttpStatusCode.OK);
+        }
+
+        if (method == HttpMethod.Put && parts.Length == 3 && parts[2] == "unpublish")
+        {
+            // Like the real API: the page goes back to draft and its publish date is cleared.
+            var variant = Stored("document", Guid.Parse(parts[1]))!["variants"]![0]!;
+            variant["publishDate"] = null;
+            variant["state"] = "Draft";
             return Ok(HttpStatusCode.OK);
         }
 
