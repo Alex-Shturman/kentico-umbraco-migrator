@@ -40,6 +40,8 @@ public sealed class UrlIndexTests
     [InlineData("", "/")]
     [InlineData("https://WWW.kayaks.example/About.aspx", "/about")]
     [InlineData("https://www.kayaks.example", "/")]
+    [InlineData("/About.aspx/", "/about")]
+    [InlineData("/About/.aspx", "/about")]
     public void Normalize_examples(string url, string expected)
     {
         Assert.Equal(expected, UrlIndex.Normalize(url, ["www.kayaks.example"]));
@@ -127,5 +129,47 @@ public sealed class UrlIndexTests
 
         Assert.Equal(expected, kind);
         Assert.Null(key);
+    }
+
+    private static TargetDocument Target(int id, string oldPath, string[] oldUrls, string type = "contentPage", bool publish = true, int sortOrder = 1, Guid? parent = null) =>
+        new(GuidFor(id), parent, type, oldPath.TrimStart('/'), "x", sortOrder, publish,
+            new Dictionary<string, PlannedValue>(), oldPath, oldUrls, null);
+
+    private static UrlIndex IndexOf(params TargetDocument[] docs) =>
+        UrlIndex.Create(new MigrationPlan([], [], [], [], docs, [], []), [], SampleProfile());
+
+    [Fact]
+    public void Folders_and_unpublished_documents_are_not_link_targets()
+    {
+        var index = IndexOf(
+            Target(1, "/Home", ["/Home"]),
+            Target(2, "/Catalog", ["/Catalog"], type: "folder", parent: GuidFor(1)),
+            Target(3, "/Draft", ["/Draft", "/Draft.aspx"], publish: false, parent: GuidFor(1)),
+            Target(4, "/Live", ["/Live"], parent: GuidFor(1)));
+
+        Assert.Equal((LinkKind.Unknown, (Guid?)null), index.Resolve("/Catalog"));
+        Assert.Equal((LinkKind.Unknown, (Guid?)null), index.Resolve("/draft.aspx"));
+        Assert.Equal((LinkKind.Document, (Guid?)GuidFor(4)), index.Resolve("/live"));
+    }
+
+    [Fact]
+    public void Root_resolves_only_to_the_home_document()
+    {
+        var withoutHome = IndexOf(Target(1, "/About", ["/About"]));
+        Assert.Equal((LinkKind.Unknown, (Guid?)null), withoutHome.Resolve("/"));
+
+        var withHome = IndexOf(Target(1, "/About", ["/About"]), Target(2, "/home", ["/home"], sortOrder: 9));
+        Assert.Equal((LinkKind.Document, (Guid?)GuidFor(2)), withHome.Resolve("/"));
+    }
+
+    [Fact]
+    public void Duplicate_claims_go_to_the_first_in_claim_order()
+    {
+        // Listed in plan order second-first; claim order (sort order, then path) picks document 1.
+        var index = IndexOf(
+            Target(2, "/Second", ["/shared"], sortOrder: 5),
+            Target(1, "/First", ["/shared"], sortOrder: 2));
+
+        Assert.Equal((LinkKind.Document, (Guid?)GuidFor(1)), index.Resolve("/shared"));
     }
 }

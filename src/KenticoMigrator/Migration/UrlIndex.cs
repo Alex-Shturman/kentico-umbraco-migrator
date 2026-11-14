@@ -25,8 +25,10 @@ public sealed partial class UrlIndex
         _ownHosts = profile.OwnHosts;
         _media = [.. plan.Media.Where(m => m.MediaType != MediaType.Folder).Select(m => m.Key)];
 
-        // First document in plan order wins when two pages claim the same old URL.
-        foreach (var doc in plan.Documents)
+        // Only published pages are link targets, and never folders (their URL answers 404). When two pages
+        // claim the same old URL the first in claim order wins, the same rule the redirect planner uses.
+        var targets = ClaimOrder.Sort(plan.Documents.Where(d => d.Publish && d.TypeAlias != PlanAliases.Folder)).ToList();
+        foreach (var doc in targets)
         {
             foreach (var url in doc.OldUrls.Prepend(doc.OldPath))
             {
@@ -34,11 +36,11 @@ public sealed partial class UrlIndex
             }
         }
 
-        // The site root is the home page, which is the one planned document without a parent.
-        var root = plan.Documents.FirstOrDefault(d => d.ParentKey is null);
-        if (root is not null)
+        // The site root is the home page and nothing else.
+        var home = targets.FirstOrDefault(d => string.Equals(d.OldPath.TrimEnd('/'), PlanBuilder.HomeAliasPath, StringComparison.OrdinalIgnoreCase));
+        if (home is not null)
         {
-            _documents.TryAdd("/", root.Key);
+            _documents.TryAdd("/", home.Key);
         }
 
         _applicationPrefixes =
@@ -158,14 +160,17 @@ public sealed partial class UrlIndex
             text = text.ToLowerInvariant();
         }
 
+        // Trim, strip the extension, trim again: "/About.aspx/" and "/About/" are the same page.
+        text = TrimTrailingSlashes(text);
         if (stripAspx && text.EndsWith(".aspx", StringComparison.OrdinalIgnoreCase))
         {
-            text = text[..^5];
+            text = TrimTrailingSlashes(text[..^5]);
         }
 
-        text = text.Length > 1 ? text.TrimEnd('/') : text;
         return text.Length == 0 ? "/" : text;
     }
+
+    private static string TrimTrailingSlashes(string text) => text.Length > 1 ? text.TrimEnd('/') : text;
 
     private bool IsOwnHost(string absolute)
     {
