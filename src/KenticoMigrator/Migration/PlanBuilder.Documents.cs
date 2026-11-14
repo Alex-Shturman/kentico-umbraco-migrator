@@ -56,6 +56,8 @@ public sealed partial class PlanBuilder
             }
         }
 
+        PlanMedia(candidates);
+
         var byNodeId = candidates.ToDictionary(n => n.Document!.NodeId);
         var byAliasPath = new Dictionary<string, Node>(StringComparer.OrdinalIgnoreCase);
         foreach (var node in candidates)
@@ -113,6 +115,13 @@ public sealed partial class PlanBuilder
         if (excluded is not null)
         {
             Skip(SkipCategories.ApplicationPage, doc, $"Under excluded path '{excluded}'.");
+            return null;
+        }
+
+        if (string.Equals(doc.ClassName, FileNodeClass, StringComparison.OrdinalIgnoreCase))
+        {
+            // A file page becomes a media item (see PlanMedia), not a document.
+            _fileNodes.Add(doc);
             return null;
         }
 
@@ -371,6 +380,17 @@ public sealed partial class PlanBuilder
         if (source.StartsWith("sku:", StringComparison.Ordinal))
         {
             return values.Sku is null ? null : Lookup(values.Sku, source[4..]);
+        }
+
+        if (source.StartsWith("file:", StringComparison.Ordinal))
+        {
+            var keys = MediaOf(node, source[5..]);
+            return keys.Length > 0 ? keys[0] : null;
+        }
+
+        if (source.StartsWith("attachments:", StringComparison.Ordinal))
+        {
+            return MediaOf(node, source[12..]);
         }
 
         if (source.StartsWith("doc:", StringComparison.Ordinal))

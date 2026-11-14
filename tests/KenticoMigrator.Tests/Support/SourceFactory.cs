@@ -56,6 +56,19 @@ internal static class SourceFactory
             fields ?? new Dictionary<string, object?>(), regions ?? [], sku, linkedNodeId);
     }
 
+    public static SourceAttachment Attachment(
+        Guid guid,
+        int nodeId,
+        string fileName,
+        string? fieldColumn = null,
+        bool unsorted = false,
+        int order = 0,
+        string extension = ".jpg") =>
+        new(guid, nodeId, fileName, extension, "image/jpeg", 1000, 10, 10, null, fieldColumn, unsorted, order);
+
+    public static SourceMediaFile MediaFile(Guid guid, string library, string filePath, string extension = ".jpg") =>
+        new(guid, library, library, filePath, filePath[(filePath.LastIndexOf('/') + 1)..], extension, "image/jpeg", 1000, null);
+
     public static EditableRegion Region(string id, string html) => new(id, html);
 
     public static SourceSite Site(

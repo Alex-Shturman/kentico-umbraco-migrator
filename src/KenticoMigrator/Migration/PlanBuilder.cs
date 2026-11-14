@@ -41,7 +41,7 @@ public sealed partial class PlanBuilder
             schema.DataTypes,
             ApplyHierarchy(schema.DocumentTypes, documents),
             schema.Templates,
-            [],
+            _media,
             documents,
             _skipped,
             _issues);
