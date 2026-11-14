@@ -1,9 +1,11 @@
 # Expected behaviour of the migrated sample site: <old url> <expected status> <expected final path>
 #
 # Status is the first response without following redirects. The final path is where the request ends:
-# the redirect target for 301, the request path itself for 200 and 404. Old URLs are percent-encoded.
-# Umbraco serves paths case-insensitively and generates lower case URLs, so a path that differs only
-# in case is a 200 without a redirect.
+# the Location header for 301, the request path itself for 200 and 404. Old URLs are percent-encoded.
+# Verified Umbraco 17 routing (Track 1): routing is case-insensitive, so a path that differs only in
+# case is a 200 without a redirect; document URLs are lower case with a trailing slash, and a redirect
+# Location is relative with that trailing slash (so 301 targets below end in "/"); the host itself
+# redirects .aspx paths. Track 4 confirms every line against a real run (T055).
 
 # Kept paths, served directly
 / 200 /
@@ -20,21 +22,21 @@
 /catalog/brands/AQUILA 200 /catalog/brands/AQUILA
 
 # Old .aspx form
-/About.aspx 301 /about
-/Story.aspx 301 /story
-/Articles/Paddling-Basics.aspx 301 /articles/paddling-basics
+/About.aspx 301 /about/
+/Story.aspx 301 /story/
+/Articles/Paddling-Basics.aspx 301 /articles/paddling-basics/
 
 # Old home path
 /Home 301 /
 /Home.aspx 301 /
 
 # Document alias and URL path override
-/visit 301 /contact
-/about-the-shop 301 /about
+/visit 301 /contact/
+/about-the-shop 301 /about/
 
 # Brand with a space in the name and an old brand route
-/brand-search/Sea%20Spirit 301 /catalog/brands/sea-spirit
-/brand-search/Aquila 301 /catalog/brands/aquila
+/brand-search/Sea%20Spirit 301 /catalog/brands/sea-spirit/
+/brand-search/Aquila 301 /catalog/brands/aquila/
 
 # Excluded application page, wildcard route, folder without template and pages that are not published
 /Account/Profile 404 /Account/Profile

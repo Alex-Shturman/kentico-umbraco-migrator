@@ -100,7 +100,7 @@ Own hosts needed in the profile: `kayaks.example` and `www.kayaks.example`.
   excluded `/Account/Profile` page (reported, not migrated).
 - `/About` has a hand-set `DocumentUrlPath` of `/about-the-shop`.
 - `expected-urls.txt` lists 25 old URLs with the expected status and final path
-  (`<old url> <status> <final path>`). Final paths for redirects assume Umbraco's lower case URLs
+  (`<old url> <status> <final path>`). Final paths for redirects follow the verified Umbraco 17 routing (lower case, relative, trailing slash)
   and the catalog layout `/catalog/brands/<alias>`; adjust them if a run shows otherwise.
 
 ## Profile values for Track 3
