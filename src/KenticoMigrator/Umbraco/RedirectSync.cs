@@ -68,19 +68,20 @@ public sealed class RedirectSync(IUmbracoApi api)
     private async Task<(int Created, int Existing, List<ItemResult> Failures)> SendBatchAsync(PlannedRedirect[] batch, CancellationToken ct)
     {
         var body = batch.Select(r => new RedirectRequest(EncodePath(r.OldUrl), r.TargetKey)).ToList();
-        ApiResponse response;
+        JsonNode answer;
         try
         {
-            response = await api.SendAsync(HttpMethod.Post, EndpointPath, body, ct).ConfigureAwait(false);
+            var response = await api.SendAsync(HttpMethod.Post, EndpointPath, body, ct).ConfigureAwait(false);
+            answer = JsonNode.Parse(response.Body) ?? throw new InvalidDataException("The redirect endpoint answered without a body.");
         }
         catch (Exception ex) when (ApiErrors.IsItemFailure(ex, ct))
         {
-            // The call failed as a whole (a POST is not retried once it may have arrived): every entry of the batch failed.
+            // The call failed as a whole (a POST is not retried once it may have arrived) or the answer cannot be read:
+            // every entry of the batch failed, and nothing of the answer is copied into the report.
             var error = ApiErrors.Describe(ex);
             return (0, 0, [.. batch.Select(r => Failure(r, error))]);
         }
 
-        var answer = JsonNode.Parse(response.Body) ?? throw new InvalidDataException("The redirect endpoint answered without a body.");
         var byUrl = batch.GroupBy(r => EncodePath(r.OldUrl)).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         var failures = new List<ItemResult>();
         foreach (var entry in answer["failed"]?.AsArray() ?? [])
@@ -112,7 +113,7 @@ public sealed class RedirectSync(IUmbracoApi api)
 
     /// <summary>
     /// The old URL as a browser sends it: the host refuses literal spaces and keeps non-ASCII text only when it is encoded.
-    /// Characters that are not allowed in a path and a <c>%</c> that does not start an escape are percent-encoded; an
+    /// Characters that are not allowed in a path (a literal <c>?</c> or <c>#</c> in a name is data, not a query or fragment) and a <c>%</c> that does not start an escape are percent-encoded; an
     /// existing escape is kept, so an encoded URL is not encoded twice.
     /// </summary>
     internal static string EncodePath(string url)
@@ -121,7 +122,7 @@ public sealed class RedirectSync(IUmbracoApi api)
         for (var i = 0; i < url.Length; i++)
         {
             var c = url[i];
-            var keep = c is > ' ' and < '\u007f' && "\"<>\\^`{|}".IndexOf(c, StringComparison.Ordinal) < 0
+            var keep = c is > ' ' and < '\u007f' && "\"<>\\^`{|}?#".IndexOf(c, StringComparison.Ordinal) < 0
                 && (c != '%' || (i + 2 < url.Length && Uri.IsHexDigit(url[i + 1]) && Uri.IsHexDigit(url[i + 2])));
             if (keep)
             {

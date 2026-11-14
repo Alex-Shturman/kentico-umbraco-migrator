@@ -27,6 +27,9 @@ public sealed class RedirectSyncTests
 
         public Func<int, Exception?>? FailBatch { get; set; }
 
+        /// <summary>When set, the body of every 200 answer (a host that answers with something that is not the contract).</summary>
+        public string? RawAnswer { get; set; }
+
         public HashSet<string> Known { get; } = [];
 
         public Task<JsonNode?> GetAsync(string path, CancellationToken ct) => throw new InvalidOperationException(path);
@@ -65,7 +68,7 @@ public sealed class RedirectSyncTests
             }
 
             var answer = new JsonObject { ["created"] = created, ["existing"] = existing, ["failed"] = failed };
-            return Task.FromResult(new ApiResponse(HttpStatusCode.OK, answer.ToJsonString(), null));
+            return Task.FromResult(new ApiResponse(HttpStatusCode.OK, RawAnswer ?? answer.ToJsonString(), null));
         }
     }
 
@@ -100,10 +103,10 @@ public sealed class RedirectSyncTests
     {
         var host = new Host();
 
-        await new RedirectSync(host).RegisterAsync([Redirect(1, oldUrl: "/brand-search/Sea Spirit"), Redirect(2, oldUrl: "/café"), Redirect(3, oldUrl: "/a%20b"), Redirect(4, oldUrl: "/50%")], false, Ct);
+        await new RedirectSync(host).RegisterAsync([Redirect(1, oldUrl: "/brand-search/Sea Spirit"), Redirect(2, oldUrl: "/café"), Redirect(3, oldUrl: "/a%20b"), Redirect(4, oldUrl: "/50%"), Redirect(5, oldUrl: "/brand-search/Who? Me #1")], false, Ct);
 
         var urls = host.Batches.Single().Select(e => e!["url"]!.GetValue<string>()).ToList();
-        Assert.Equal(["/brand-search/Sea%20Spirit", "/caf%C3%A9", "/a%20b", "/50%25"], urls);
+        Assert.Equal(["/brand-search/Sea%20Spirit", "/caf%C3%A9", "/a%20b", "/50%25", "/brand-search/Who%3F%20Me%20%231"], urls);
         Assert.Equal(GuidFor(2).ToString("D"), host.Batches.Single()[0]!["contentKey"]!.GetValue<string>());
     }
 
@@ -170,5 +173,17 @@ public sealed class RedirectSyncTests
         var host = new Host { FailBatch = _ => FakeUmbracoApi.Problem(HttpStatusCode.Unauthorized, "Unauthorized") };
 
         await Assert.ThrowsAsync<UmbracoApiException>(() => new RedirectSync(host).RegisterAsync([Redirect(1)], false, Ct));
+    }
+
+    [Fact]
+    public async Task A_malformed_answer_fails_its_batch_not_the_registration()
+    {
+        var host = new Host { RawAnswer = "<html>gateway</html>" };
+
+        var result = await new RedirectSync(host).RegisterAsync([Redirect(1), Redirect(2)], false, Ct);
+
+        Assert.Equal(new RedirectSummary(RedirectReasons.Alias, 0, 0, 2), Assert.Single(result.Summaries));
+        Assert.All(result.Failures, f => Assert.Equal(ItemOutcome.Failed, f.Outcome));
+        Assert.DoesNotContain(result.Failures, f => f.Error!.Contains("gateway", StringComparison.Ordinal));
     }
 }

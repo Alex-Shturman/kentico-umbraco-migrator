@@ -379,6 +379,7 @@ public sealed class MigrationRunnerTests : IDisposable
         Assert.Equal(ExitCodes.Success, exit);
         Assert.Empty(api.Redirects);
         Assert.DoesNotContain(api.Calls, c => c.Path == "/kentico-migration/redirects");
+        Assert.Contains("planned for pages that already exist, nothing sent", _output.ToString());
     }
 
     [Fact]
@@ -399,6 +400,24 @@ public sealed class MigrationRunnerTests : IDisposable
         var report = File.ReadAllText(Path.Combine(_runDir, "report.md"));
         Assert.Contains($"/About: Page {about.Key:D} is planned as published but not published in Umbraco", report);
         Assert.Contains("planned as published but not published in Umbraco, review: 1", _output.ToString());
+    }
+
+    [Fact]
+    public async Task A_failed_url_read_is_a_failed_redirect_item_and_the_run_still_reports()
+    {
+        var api = NewApi();
+        api.Failure = c => c.Path.StartsWith("/document/urls", StringComparison.Ordinal) ? FakeUmbracoApi.Problem(HttpStatusCode.BadGateway, "Bad gateway") : null;
+
+        var exit = await Runner(Reader(), api).RunAsync(Request(CliArguments.Migrate), Ct);
+
+        Assert.Equal(ExitCodes.ItemErrors, exit);
+        var items = File.ReadAllText(Path.Combine(_runDir, "items.csv"));
+        Assert.Contains("redirect,", items);
+        Assert.Contains("HTTP 502 Bad gateway", items);
+        Assert.Contains("verify:", _output.ToString());
+        Assert.Contains("failed redirect: HTTP 502 Bad gateway", _output.ToString());
+        Assert.Equal(1, ReadReport().GetProperty("exitCode").GetInt32());
+        Assert.Empty(api.Redirects);
     }
 
     [Fact]

@@ -33,7 +33,7 @@ while IFS= read -r line || [ -n "$line" ]; do
   fi
 
   # -k: the local host uses the development certificate; --path-as-is keeps the URL exactly as written in the file.
-  result=$(curl -sk --path-as-is -o /dev/null -w '%{http_code} %{redirect_url}' "$base$url" || true)
+  result=$(curl -sk -g --path-as-is -o /dev/null -w '%{http_code} %{redirect_url}' "$base$url" || true)
   status="${result%% *}"
   location="${result#* }"
   if [ -n "$location" ]; then

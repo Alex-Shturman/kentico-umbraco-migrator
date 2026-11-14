@@ -181,7 +181,18 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
             // Redirects come from the URLs the pages really have (FR-023), so they follow the page writes.
             await Timed(timings, Phases.Redirects, async () =>
             {
-                var urls = await documentSync.ReadUrlsAsync([.. plan.Documents.Where(d => d.Publish).Select(d => d.Key)], ct).ConfigureAwait(false);
+                IReadOnlyDictionary<Guid, string> urls;
+                try
+                {
+                    urls = await documentSync.ReadUrlsAsync([.. plan.Documents.Where(d => d.Publish).Select(d => d.Key)], ct).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ApiErrors.IsItemFailure(ex, ct))
+                {
+                    // Without the actual URLs no redirect can be planned; the run goes on to verify and report.
+                    redirectFailures.Add(new ItemResult(Guid.Empty, ItemKinds.Redirect, string.Empty, "(page URLs)", ItemOutcome.Failed, ApiErrors.Describe(ex)));
+                    return (0, "page URLs could not be read, no redirects planned");
+                }
+
                 var planned = RedirectPlanner.Plan(plan.Documents, urls);
                 extraIssues.AddRange(planned.Warnings);
                 plannedRedirects = planned.Redirects;
@@ -189,7 +200,7 @@ public sealed class MigrationRunner(IKenticoReader reader, IUmbracoApi? api, Tex
                 redirectSummaries = registered.Summaries;
                 redirectFailures.AddRange(registered.Failures);
                 return (0, preview
-                    ? $"{planned.Redirects.Count} planned, nothing sent"
+                    ? $"{planned.Redirects.Count} planned for pages that already exist, nothing sent"
                     : $"{planned.Redirects.Count} planned; {Total(registered.Summaries, s => s.Created)} created, {Total(registered.Summaries, s => s.Existing)} existing, {Total(registered.Summaries, s => s.Failed)} failed");
             }).ConfigureAwait(false);
 
