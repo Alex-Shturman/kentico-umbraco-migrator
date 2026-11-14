@@ -94,6 +94,22 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
             return Task.FromResult<JsonNode?>(new JsonObject { ["total"] = RedirectTotal, ["items"] = new JsonArray() });
         }
 
+        if (route == "/tree/document/ancestors")
+        {
+            // Like the real endpoint: the path from the root down to the item itself; each entry names its parent.
+            var descendant = Guid.Parse(query["descendantId"]);
+            if (Stored("document", descendant) is null || !_parents.TryGetValue(descendant, out var parentOfKey))
+            {
+                return Task.FromResult<JsonNode?>(new JsonArray());
+            }
+
+            return Task.FromResult<JsonNode?>(new JsonArray(new JsonObject
+            {
+                ["id"] = descendant.ToString("D"),
+                ["parent"] = parentOfKey is null ? null : new JsonObject { ["id"] = parentOfKey.Value.ToString("D") },
+            }));
+        }
+
         if (parts is ["tree", var kind, "root" or "children"])
         {
             Guid? parent = query.TryGetValue("parentId", out var p) ? Guid.Parse(p) : null;
@@ -175,7 +191,9 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
         if (method == HttpMethod.Put && parts.Length == 3 && parts[2] == "publish")
         {
             // Like the real read model: a published page carries a publish date.
-            Stored("document", Guid.Parse(parts[1]))!["variants"]![0]!["publishDate"] = "2026-01-01T00:00:00+00:00";
+            var variant = Stored("document", Guid.Parse(parts[1]))!["variants"]![0]!;
+            variant["publishDate"] = "2026-01-01T00:00:00+00:00";
+            variant["state"] = "Published";
             return Ok(HttpStatusCode.OK);
         }
 

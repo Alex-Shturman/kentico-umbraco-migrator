@@ -408,4 +408,143 @@ public sealed class DocumentSyncTests
 
         Assert.Equal([ItemOutcome.Created, ItemOutcome.Created], sink.Select(r => r.Outcome));
     }
+
+    private static TargetDocument Reparent(TargetDocument doc, int newParentId) => doc with { ParentKey = GuidFor(newParentId) };
+
+    [Fact]
+    public async Task Page_moved_in_the_source_is_moved_and_reported_updated()
+    {
+        var api = new FakeUmbracoApi();
+        await NewSync(api).SyncAsync([Doc(1, null, "Root"), Doc(2, 1, "A"), Doc(3, 1, "B")], Options, Ct);
+        var movedPlan = new[] { Doc(1, null, "Root"), Doc(2, 1, "A"), Reparent(Doc(3, 1, "B"), 2) };
+        api.Calls.Clear();
+
+        var results = await NewSync(api).SyncAsync(movedPlan, Options, Ct);
+
+        Assert.Equal(ItemOutcome.Updated, results.Single(r => r.Key == GuidFor(3)).Outcome);
+        Assert.Contains(api.Writes, c => c.Path == $"/document/{GuidFor(3):D}/move" && c.Body!["target"]!["id"]!.GetValue<string>() == GuidFor(2).ToString("D"));
+        Assert.Equal([GuidFor(3)], api.ChildrenOf(GuidFor(2)));
+
+        var again = await NewSync(api).SyncAsync(movedPlan, Options, Ct);
+        Assert.All(again, r => Assert.Equal(ItemOutcome.Unchanged, r.Outcome));
+    }
+
+    [Fact]
+    public async Task Source_move_in_preview_is_would_update_and_writes_nothing()
+    {
+        var api = new FakeUmbracoApi();
+        await NewSync(api).SyncAsync([Doc(1, null, "Root"), Doc(2, 1, "A"), Doc(3, 1, "B")], Options, Ct);
+        api.Calls.Clear();
+
+        var results = await NewSync(api).SyncAsync([Doc(1, null, "Root"), Doc(2, 1, "A"), Reparent(Doc(3, 1, "B"), 2)], new SyncOptions(Preview: true), Ct);
+
+        Assert.Equal(ItemOutcome.WouldUpdate, results.Single(r => r.Key == GuidFor(3)).Outcome);
+        Assert.Empty(api.Writes);
+    }
+
+    [Fact]
+    public async Task Editor_move_is_still_an_edit_when_the_source_moved_too()
+    {
+        var api = new FakeUmbracoApi();
+        await NewSync(api).SyncAsync([Doc(1, null, "Root"), Doc(2, 1, "A"), Doc(3, 1, "B"), Doc(4, 1, "C")], Options, Ct);
+        // An editor moved B under C; the source now says B belongs under A.
+        await api.SendAsync(HttpMethod.Put, $"/document/{GuidFor(3):D}/move", new { target = new { id = GuidFor(4) } }, Ct);
+        api.Calls.Clear();
+
+        var results = await NewSync(api).SyncAsync([Doc(1, null, "Root"), Doc(2, 1, "A"), Reparent(Doc(3, 1, "B"), 2), Doc(4, 1, "C")], Options, Ct);
+
+        Assert.Equal(ItemOutcome.EditedSkipped, results.Single(r => r.Key == GuidFor(3)).Outcome);
+        Assert.Empty(api.Writes);
+    }
+
+    [Fact]
+    public async Task Page_with_pending_changes_that_should_be_published_is_published_again()
+    {
+        var api = new FakeUmbracoApi();
+        var docs = new[] { Doc(1, null, "Live", publish: true) };
+        await NewSync(api).SyncAsync(docs, Options, Ct);
+        // A PUT succeeded earlier and its publish failed: the page now has changes that are not published.
+        api.Stored("document", GuidFor(1))!["variants"]![0]!["state"] = "PublishedPendingChanges";
+        api.Calls.Clear();
+
+        var results = await NewSync(api).SyncAsync(docs, Options, Ct);
+
+        Assert.Equal(ItemOutcome.Updated, results.Single().Outcome);
+        Assert.Equal([GuidFor(1)], api.PublishedKeys);
+        Assert.DoesNotContain(api.Writes, c => c.Method == HttpMethod.Put && c.Path == $"/document/{GuidFor(1):D}");
+    }
+
+    [Fact]
+    public async Task Page_an_editor_unpublished_is_left_unpublished()
+    {
+        var api = new FakeUmbracoApi();
+        var docs = new[] { Doc(1, null, "Live", publish: true) };
+        await NewSync(api).SyncAsync(docs, Options, Ct);
+        api.Stored("document", GuidFor(1))!["variants"]![0]!["state"] = "Draft"; // publishDate stays: it was published once
+        api.Calls.Clear();
+
+        var results = await NewSync(api).SyncAsync(docs, Options, Ct);
+
+        Assert.Equal(ItemOutcome.Unchanged, results.Single().Outcome);
+        Assert.Empty(api.Writes);
+    }
+
+    [Fact]
+    public async Task Sort_is_reported_as_its_own_item_keyed_by_the_parent()
+    {
+        var api = new FakeUmbracoApi();
+        var docs = new[] { Doc(1, null, "Root"), Doc(2, 1, "A", sortOrder: 2), Doc(3, 1, "B", sortOrder: 1) };
+
+        var results = await NewSync(api).SyncAsync(docs, Options, Ct);
+
+        var sort = Assert.Single(results, r => r.Kind == ItemKinds.Sort);
+        Assert.Equal((GuidFor(1), ItemOutcome.Updated, "/Root"), (sort.Key, sort.Outcome, sort.OldPath));
+        Assert.Equal(docs.Length, results.Count(r => r.Kind == ItemKinds.Document));
+    }
+
+    [Fact]
+    public async Task Sort_failure_is_a_separate_failed_item_and_pages_keep_their_outcome()
+    {
+        var api = new FakeUmbracoApi
+        {
+            Failure = c => c.Path == "/document/sort" ? FakeUmbracoApi.Problem(HttpStatusCode.BadRequest, "Cannot sort") : null,
+        };
+        var docs = new[] { Doc(1, null, "Root"), Doc(2, 1, "A", sortOrder: 2), Doc(3, 1, "B", sortOrder: 1) };
+
+        var results = await NewSync(api).SyncAsync(docs, Options, Ct);
+
+        Assert.All(results.Where(r => r.Kind == ItemKinds.Document), r => Assert.Equal(ItemOutcome.Created, r.Outcome));
+        var sort = Assert.Single(results, r => r.Kind == ItemKinds.Sort);
+        Assert.Equal((ItemOutcome.Failed, "HTTP 400 Cannot sort"), (sort.Outcome, sort.Error));
+    }
+
+    [Fact]
+    public async Task Order_an_editor_set_is_kept_when_nothing_under_the_parent_changed()
+    {
+        var api = new FakeUmbracoApi();
+        var docs = new[] { Doc(1, null, "Root"), Doc(2, 1, "A", sortOrder: 1), Doc(3, 1, "B", sortOrder: 2) };
+        await NewSync(api).SyncAsync(docs, Options, Ct);
+        await api.SendAsync(HttpMethod.Put, "/document/sort", new { parent = new { id = GuidFor(1) }, sorting = new[] { new { id = GuidFor(3), sortOrder = 0 }, new { id = GuidFor(2), sortOrder = 1 } } }, Ct);
+        api.Calls.Clear();
+
+        var results = await NewSync(api).SyncAsync(docs, Options, Ct);
+
+        Assert.All(results, r => Assert.Equal(ItemOutcome.Unchanged, r.Outcome));
+        Assert.Empty(api.Writes);
+        Assert.Equal([GuidFor(3), GuidFor(2)], api.ChildrenOf(GuidFor(1)));
+    }
+
+    [Fact]
+    public async Task No_sort_under_a_parent_that_has_an_edited_child()
+    {
+        var api = new FakeUmbracoApi();
+        await NewSync(api).SyncAsync([Doc(1, null, "Root"), Doc(2, 1, "A", sortOrder: 5)], Options, Ct);
+        EditTitle(api, GuidFor(2), "Edited");
+        api.Calls.Clear();
+
+        var results = await NewSync(api).SyncAsync([Doc(1, null, "Root"), Doc(2, 1, "A", sortOrder: 5), Doc(3, 1, "C", sortOrder: 0)], Options, Ct);
+
+        Assert.Equal([ItemOutcome.Unchanged, ItemOutcome.EditedSkipped, ItemOutcome.Created], results.Select(r => r.Outcome));
+        Assert.DoesNotContain(api.Writes, c => c.Path == "/document/sort");
+    }
 }

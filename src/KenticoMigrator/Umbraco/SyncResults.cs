@@ -22,6 +22,9 @@ public static class ItemKinds
     public const string Media = "media";
     public const string Document = "document";
     public const string Redirect = "redirect";
+
+    /// <summary>Putting the children of one parent in the planned order; keyed by the parent.</summary>
+    public const string Sort = "sort";
 }
 
 /// <summary>Reports carry keys, paths and outcomes only, never field values (FR-028).</summary>

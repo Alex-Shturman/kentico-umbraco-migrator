@@ -15,6 +15,8 @@ public sealed record SyncOptions(bool OverwriteEdited = false, bool Preview = fa
 /// </summary>
 public sealed class DocumentSync
 {
+    private const string PendingChangesState = "PublishedPendingChanges";
+
     private static readonly Guid RootKey = Guid.Empty;
 
     // Stands for a parent that is not the planned one; it never equals a planned parent key, so the fingerprint differs.
@@ -44,17 +46,12 @@ public sealed class DocumentSync
         ArgumentNullException.ThrowIfNull(options);
 
         results ??= new List<ItemResult>(documents.Count);
-        var present = new HashSet<Guid>();
         foreach (var doc in ParentsFirst(documents))
         {
             try
             {
                 var outcome = await SyncOneAsync(doc, options, ct).ConfigureAwait(false);
                 results.Add(Result(doc, outcome));
-                if (outcome is not ItemOutcome.WouldCreate)
-                {
-                    present.Add(doc.Key);
-                }
             }
             catch (Exception ex) when (ApiErrors.IsItemFailure(ex, ct))
             {
@@ -64,7 +61,7 @@ public sealed class DocumentSync
 
         if (!options.Preview)
         {
-            await SortAsync(documents, present, results, ct).ConfigureAwait(false);
+            await SortAsync(documents, results, ct).ConfigureAwait(false);
         }
 
         return results;
@@ -101,13 +98,16 @@ public sealed class DocumentSync
             return await PublishAsync(doc, ItemOutcome.Created, ct).ConfigureAwait(false);
         }
 
-        // R5: an item whose current owned values no longer hash to what the tool stored was changed by an editor.
+        // R5: an item whose current owned values (and parent) no longer hash to what the tool stored was changed by an editor.
+        // A page that is not under its planned parent is under some other parent: the one the tool put it in (the source moved
+        // it, the tool's own content is untouched) or one an editor chose (an edit).
         var siblings = await ChildrenOfAsync(doc.ParentKey, ct).ConfigureAwait(false);
         var moved = !siblings.Contains(doc.Key);
+        var actualParent = moved ? await ActualParentAsync(doc.Key, ct).ConfigureAwait(false) : doc.ParentKey;
         var storedFingerprint = StoredFingerprint(current);
         var currentFingerprint = Fingerprint.Compute(Fingerprint.FromCurrent(
             CurrentName(current),
-            moved ? UnknownParent : doc.ParentKey,
+            actualParent,
             current["values"],
             [.. owned.Values.Keys]));
 
@@ -132,11 +132,24 @@ public sealed class DocumentSync
             return await PublishAsync(doc, ItemOutcome.EditedOverwritten, ct).ConfigureAwait(false);
         }
 
+        if (moved)
+        {
+            // Only the planned parent differs: a move in the source. Move the page and write it again with the new parent.
+            if (options.Preview)
+            {
+                return ItemOutcome.WouldUpdate;
+            }
+
+            await MoveAsync(doc, siblings, ct).ConfigureAwait(false);
+            await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
+            return await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
+        }
+
         if (storedFingerprint == plannedFingerprint)
         {
-            // A page that should be published but never was (an earlier publish failed) is published now. A page an editor
-            // unpublished has a publish date and is left alone.
-            if (doc.Publish && NeverPublished(current))
+            // A page that should be published but is not (an earlier publish failed: never published, or published with changes
+            // that were not) is published now. A page an editor unpublished keeps its publish date and state Draft and is left alone.
+            if (doc.Publish && (NeverPublished(current) || State(current) == PendingChangesState))
             {
                 return options.Preview ? ItemOutcome.WouldUpdate : await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
             }
@@ -151,6 +164,20 @@ public sealed class DocumentSync
 
         await UpdateAsync(doc, owned, plannedFingerprint, ct).ConfigureAwait(false);
         return await PublishAsync(doc, ItemOutcome.Updated, ct).ConfigureAwait(false);
+    }
+
+    // The parent a page really has (null: a root page), from the ancestors endpoint, whose last entry is the page itself.
+    // When it cannot be told, a parent that is never the planned one, so the page counts as edited.
+    private async Task<Guid?> ActualParentAsync(Guid key, CancellationToken ct)
+    {
+        var path = await _api.GetAsync($"/tree/document/ancestors?descendantId={key:D}", ct).ConfigureAwait(false);
+        var self = path?.AsArray().FirstOrDefault(n => n?["id"]?.GetValue<string>() is { } id && Guid.Parse(id) == key);
+        if (self is null)
+        {
+            return UnknownParent;
+        }
+
+        return self["parent"]?["id"]?.GetValue<string>() is { } parent ? Guid.Parse(parent) : null;
     }
 
     private async Task RestoreAsync(TargetDocument doc, CancellationToken ct)
@@ -211,38 +238,54 @@ public sealed class DocumentSync
         return written;
     }
 
-    // Puts the planned documents of each parent in the planned order. Documents the plan does not know keep their relative
-    // order and go after the planned ones, so an editor's page is never lost between the planned pages.
-    private async Task SortAsync(IReadOnlyList<TargetDocument> documents, HashSet<Guid> present, List<ItemResult> results, CancellationToken ct)
+    // Puts the planned documents of each parent in the planned order, but only under a parent where this run created, updated
+    // or overwrote a child and no child was left alone as edited: an order an editor set is not undone on a quiet re-run.
+    // Documents the plan does not know keep their relative order and go after the planned ones. The sort is reported as its
+    // own item keyed by the parent.
+    private async Task SortAsync(IReadOnlyList<TargetDocument> documents, List<ItemResult> results, CancellationToken ct)
     {
+        var outcomes = results.Where(r => r.Kind == ItemKinds.Document).GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.Last().Outcome);
+        var byKey = documents.GroupBy(d => d.Key).ToDictionary(g => g.Key, g => g.First());
         foreach (var group in documents.GroupBy(d => d.ParentKey ?? RootKey))
         {
+            var parent = group.Key == RootKey ? (Guid?)null : group.Key;
+            var childOutcomes = group.Select(d => outcomes.GetValueOrDefault(d.Key)).ToList();
+            var wrote = childOutcomes.Any(o => o is ItemOutcome.Created or ItemOutcome.Updated or ItemOutcome.EditedOverwritten);
+            if (!wrote || childOutcomes.Contains(ItemOutcome.EditedSkipped))
+            {
+                continue;
+            }
+
+            var parentDoc = parent is { } p && byKey.TryGetValue(p, out var found) ? found : null;
             try
             {
-                var parent = group.Key == RootKey ? (Guid?)null : group.Key;
                 var children = await ChildrenOfAsync(parent, ct).ConfigureAwait(false);
-                // Only documents that really sit under this parent: an item an editor moved elsewhere is left alone.
+                var childSet = children.ToHashSet();
+                // Only documents that really sit under this parent (and were written or found): a failed page is not there.
                 var wanted = group.Select((d, index) => (d, index)).OrderBy(x => x.d.SortOrder).ThenBy(x => x.index)
-                    .Select(x => x.d.Key).Where(key => present.Contains(key) && children.Contains(key)).ToList();
-                if (children.Where(wanted.Contains).SequenceEqual(wanted))
+                    .Select(x => x.d.Key).Where(childSet.Contains).ToList();
+                var wantedSet = wanted.ToHashSet();
+                if (children.Where(wantedSet.Contains).SequenceEqual(wanted))
                 {
                     continue;
                 }
 
-                var order = wanted.Concat(children.Where(c => !wanted.Contains(c))).ToList();
-                var body = new SortRequest(parent is { } p ? new IdRef(p) : null, [.. order.Select((key, index) => new SortItemRequest(key, index))]);
+                var order = wanted.Concat(children.Where(c => !wantedSet.Contains(c))).ToList();
+                var body = new SortRequest(parent is { } id ? new IdRef(id) : null, [.. order.Select((key, index) => new SortItemRequest(key, index))]);
                 await _api.SendAsync(HttpMethod.Put, "/document/sort", body, ct).ConfigureAwait(false);
                 children.Clear();
                 children.AddRange(order);
+                results.Add(SortResult(parent, parentDoc, ItemOutcome.Updated, null));
             }
             catch (Exception ex) when (ApiErrors.IsItemFailure(ex, ct))
             {
-                // The pages exist; only their order could not be set. Report it on the first document of the group.
-                var first = group.First();
-                results.Add(Result(first, ItemOutcome.Failed, ApiErrors.Describe(ex)));
+                results.Add(SortResult(parent, parentDoc, ItemOutcome.Failed, ApiErrors.Describe(ex)));
             }
         }
     }
+
+    private static ItemResult SortResult(Guid? parent, TargetDocument? parentDoc, ItemOutcome outcome, string? error) =>
+        new(parent ?? Guid.Empty, ItemKinds.Sort, parentDoc?.TypeAlias ?? string.Empty, parentDoc?.OldPath ?? "/", outcome, error);
 
     private async Task<List<Guid>> ChildrenOfAsync(Guid? parent, CancellationToken ct)
     {
@@ -277,6 +320,9 @@ public sealed class DocumentSync
     private static string? StoredFingerprint(JsonNode document) =>
         document["values"]?.AsArray()
             .FirstOrDefault(v => v?["alias"]?.GetValue<string>() == PlanAliases.Fingerprint)?["value"]?.GetValue<string>();
+
+    private static string? State(JsonNode document) =>
+        document["variants"]?.AsArray().FirstOrDefault()?["state"]?.GetValue<string>();
 
     private static bool NeverPublished(JsonNode document) =>
         document["variants"]?.AsArray().FirstOrDefault()?["publishDate"] is null;
