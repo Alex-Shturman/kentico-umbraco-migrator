@@ -118,6 +118,58 @@ public sealed class FormDefinitionTests
     }
 
     [Fact]
+    public void ParseForm_returns_fields_and_primary_key_from_one_parse()
+    {
+        var form = FormDefinition.ParseForm(BoatLikeForm);
+
+        Assert.Equal("ThingID", form.PrimaryKey);
+        Assert.Equal(["ThingName", "Price", "Body"], form.Fields.Select(f => f.Column));
+    }
+
+    [Fact]
+    public void Malformed_item_markup_gives_no_options()
+    {
+        const string xml = """
+            <form version="2">
+              <field column="Group" columntype="text" guid="55555555-0000-4000-8000-000000000001">
+                <settings><controlname>dropdownlistcontrol</controlname><Options>&lt;item value="a" text="A"</Options></settings>
+              </field>
+            </form>
+            """;
+
+        var field = Assert.Single(FormDefinition.Parse(xml));
+
+        Assert.Empty(field.Options);
+    }
+
+    [Fact]
+    public void Document_type_declaration_is_rejected()
+    {
+        const string xml = """<!DOCTYPE form [<!ENTITY x "y">]><form version="2"><field column="A" columntype="text" /></form>""";
+
+        var ex = Assert.Throws<InvalidDataException>(() => FormDefinition.Parse(xml));
+
+        Assert.Contains("DTD", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Item_markup_with_entities_is_rejected_as_no_options()
+    {
+        // The options text is parsed as a separate fragment: a DTD inside it must not be processed either.
+        const string xml = """
+            <form version="2">
+              <field column="Group" columntype="text" guid="55555555-0000-4000-8000-000000000002">
+                <settings><controlname>dropdownlistcontrol</controlname><Options>&lt;!DOCTYPE x [&lt;!ENTITY e "v"&gt;]&gt;&lt;item value="&amp;e;" text="E" /&gt;</Options></settings>
+              </field>
+            </form>
+            """;
+
+        var field = Assert.Single(FormDefinition.Parse(xml));
+
+        Assert.Empty(field.Options);
+    }
+
+    [Fact]
     public void Attachment_group_and_file_fields_keep_their_type()
     {
         const string xml = """

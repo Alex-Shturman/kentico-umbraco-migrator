@@ -106,6 +106,50 @@ public sealed class EditableRegionsTests
         Assert.Equal("<p>Fish &amp; chips</p>", region.Html);
     }
 
+    [Fact]
+    public void Duplicate_regions_are_all_kept()
+    {
+        const string content = """
+            <content>
+              <webpart id="a"><![CDATA[same]]></webpart>
+              <webpart id="a"><![CDATA[same]]></webpart>
+            </content>
+            """;
+
+        var regions = EditableRegions.Parse(content, ["a"]);
+
+        Assert.Equal(2, regions.Count);
+    }
+
+    [Fact]
+    public void Malformed_content_names_the_page()
+    {
+        var ex = Assert.Throws<InvalidDataException>(() => EditableRegions.Parse("<content><webpart", [], "/Story"));
+
+        Assert.Contains("/Story", ex.Message);
+    }
+
+    [Fact]
+    public void Document_type_declaration_is_rejected()
+    {
+        const string content = """
+            <!DOCTYPE content [<!ENTITY x "expanded">]>
+            <content><webpart id="a">&x;</webpart></content>
+            """;
+
+        var ex = Assert.Throws<InvalidDataException>(() => EditableRegions.Parse(content, [], "/Story"));
+
+        Assert.Contains("DTD", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Document_type_declaration_is_rejected_in_template()
+    {
+        const string template = """<!DOCTYPE page [<!ENTITY x "y">]><page />""";
+
+        Assert.Throws<InvalidDataException>(() => EditableRegions.TemplateOrder(template, "template 3"));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

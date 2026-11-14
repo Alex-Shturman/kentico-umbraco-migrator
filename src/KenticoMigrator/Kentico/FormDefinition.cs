@@ -1,6 +1,10 @@
+using System.Xml;
 using System.Xml.Linq;
 
 namespace KenticoMigrator.Kentico;
+
+/// <summary>The fields of a page type and its primary key column, from one parse.</summary>
+public sealed record ParsedForm(IReadOnlyList<SourceField> Fields, string? PrimaryKey);
 
 /// <summary>Parser for the <c>CMS_Class.ClassFormDefinition</c> XML of a Kentico 11 page type.</summary>
 public static class FormDefinition
@@ -11,20 +15,44 @@ public static class FormDefinition
     /// Returns the fields that have a column, in definition order. The primary key field is left out
     /// (see <see cref="PrimaryKeyColumn"/>); it is not content.
     /// </summary>
-    public static IReadOnlyList<SourceField> Parse(string? xml)
+    /// <exception cref="InvalidDataException">The XML is malformed or contains a DTD.</exception>
+    public static IReadOnlyList<SourceField> Parse(string? xml) => ParseForm(xml).Fields;
+
+    /// <summary>The column of the field marked <c>isPK="true"</c>, or null when there is none.</summary>
+    public static string? PrimaryKeyColumn(string? xml) => ParseForm(xml).PrimaryKey;
+
+    /// <summary>Parses the definition once and returns both the fields and the primary key.</summary>
+    /// <exception cref="InvalidDataException">The XML is malformed or contains a DTD.</exception>
+    public static ParsedForm ParseForm(string? xml)
     {
-        var form = Load(xml);
-        if (form is null)
+        if (string.IsNullOrWhiteSpace(xml))
         {
-            return [];
+            return new ParsedForm([], null);
+        }
+
+        XElement form;
+        try
+        {
+            form = SafeXml.Parse(xml).Root!;
+        }
+        catch (XmlException ex)
+        {
+            throw new InvalidDataException($"Cannot parse the form definition: {ex.Message}", ex);
         }
 
         var fields = new List<SourceField>();
+        string? primaryKey = null;
         foreach (var field in form.Elements("field"))
         {
             var column = (string?)field.Attribute("column");
-            if (string.IsNullOrWhiteSpace(column) || IsPrimaryKey(field))
+            if (string.IsNullOrWhiteSpace(column))
             {
+                continue;
+            }
+
+            if (IsPrimaryKey(field))
+            {
+                primaryKey ??= column;
                 continue;
             }
 
@@ -41,21 +69,7 @@ public static class FormDefinition
                 guid));
         }
 
-        return fields;
-    }
-
-    /// <summary>The column of the field marked <c>isPK="true"</c>, or null when there is none.</summary>
-    public static string? PrimaryKeyColumn(string? xml) =>
-        Load(xml)?.Elements("field").Where(IsPrimaryKey).Select(f => (string?)f.Attribute("column")).FirstOrDefault();
-
-    private static XElement? Load(string? xml)
-    {
-        if (string.IsNullOrWhiteSpace(xml))
-        {
-            return null;
-        }
-
-        return XDocument.Parse(xml).Root;
+        return new ParsedForm(fields, primaryKey);
     }
 
     private static bool IsPrimaryKey(XElement field) =>
@@ -64,6 +78,7 @@ public static class FormDefinition
     /// <summary>
     /// Dropdown and radio controls store options either as lines of <c>value;text</c> or, in older
     /// definitions, as escaped <c>&lt;item value="..." text="..." /&gt;</c> markup. Empty values are dropped.
+    /// Markup that cannot be parsed (or has a DTD) gives no options.
     /// </summary>
     private static IReadOnlyList<string> ParseOptions(XElement field, string? control)
     {
@@ -78,13 +93,25 @@ public static class FormDefinition
             return [];
         }
 
-        var values = raw.TrimStart().StartsWith('<')
-            ? ParseItemMarkup(raw)
-            : raw.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Select(line => line.Split(';', 2)[0].Trim());
+        IEnumerable<string> values;
+        if (raw.TrimStart().StartsWith('<'))
+        {
+            try
+            {
+                values = SafeXml.Parse($"<items>{raw}</items>").Root!.Elements("item")
+                    .Select(i => ((string?)i.Attribute("value") ?? string.Empty).Trim())
+                    .ToList();
+            }
+            catch (XmlException)
+            {
+                return [];
+            }
+        }
+        else
+        {
+            values = raw.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Select(line => line.Split(';', 2)[0].Trim());
+        }
 
         return values.Where(v => v.Length > 0).ToList();
     }
-
-    private static IEnumerable<string> ParseItemMarkup(string markup) =>
-        XElement.Parse($"<items>{markup}</items>").Elements("item").Select(i => ((string?)i.Attribute("value") ?? string.Empty).Trim());
 }
