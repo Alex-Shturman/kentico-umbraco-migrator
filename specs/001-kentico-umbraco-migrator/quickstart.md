@@ -1,0 +1,95 @@
+# Quickstart: validate the migrator end to end
+
+Runnable scenarios that prove the feature works. Commands assume the repository root, Docker
+running, and the .NET 10 SDK. Contracts: [cli](contracts/cli.md),
+[redirect endpoint](contracts/redirect-endpoint.md).
+
+## Prerequisites
+
+- A SQL Server 2022 container. Either an existing one (set `SQL_CONTAINER` to its name) or
+  `docker compose --profile sql up -d sqlserver` (set `SQL_CONTAINER=kentico-migrator-sql`).
+- Azurite: `docker compose up -d azurite`.
+- `dotnet new install Umbraco.Templates::17.*` is not needed to run, only to regenerate the host.
+
+## 1. Sample source database
+
+```bash
+scripts/restore-sample.sh                       # creates Kentico11Sample from sample/kentico11-sample.sql
+```
+
+Expected: the script prints the counts table from `sample/README.md` and they match.
+
+## 2. Target site
+
+```bash
+dotnet user-secrets --project host/UmbracoSite set "ConnectionStrings:umbracoDbDSN" "<SQL Server connection string to PO_Umbraco>"
+dotnet user-secrets --project host/UmbracoSite set "Umbraco:CMS:Unattended:UnattendedUserPassword" "<admin password>"
+dotnet user-secrets --project host/UmbracoSite set "Migration:ApiClient:Secret" "<client secret>"
+dotnet run --project host/UmbracoSite
+```
+
+Expected: `https://localhost:44317/umbraco` shows the login page; the log says the API client was
+created (first start) or already exists.
+
+## 3. Preview
+
+```bash
+dotnet user-secrets --project src/KenticoMigrator set "Kentico:ConnectionString" "<connection string to Kentico11Sample>"
+dotnet user-secrets --project src/KenticoMigrator set "Umbraco:ClientSecret" "<client secret>"
+dotnet run --project src/KenticoMigrator -- plan --profile profiles/sample.json
+```
+
+Expected: exit code 0; `runs/<id>/report.md` lists every sample item as "would create", the
+excluded application page and the host file as skipped, the wildcard alias as an application
+route, and no plan errors. Umbraco is unchanged.
+
+## 4. Migrate
+
+```bash
+dotnet run --project src/KenticoMigrator -- migrate --profile profiles/sample.json
+```
+
+Expected: exit code 0; target counts equal the "expected after migrate" column in
+`sample/README.md`; the site shows the sample pages with images served from Azurite
+(`http://127.0.0.1:10000/devstoreaccount1/media/...`).
+
+## 5. Old URLs
+
+```bash
+scripts/check-urls.sh https://localhost:44317 sample/expected-urls.txt
+```
+
+Expected: every line prints `OK` (`200` for kept paths, `301` to the right page for `.aspx`,
+aliases, the old home path and the brand with a space in its name).
+
+## 6. Re-run and editor protection
+
+```bash
+dotnet run --project src/KenticoMigrator -- migrate --profile profiles/sample.json
+```
+
+Expected: report shows 0 created and 0 updated; all counts unchanged.
+
+Then edit one migrated page's title in the back office and run `migrate` again. Expected: that
+page is listed as "edited in Umbraco, not updated". Run with `--overwrite-edited`: listed as
+"edited in Umbraco, overwritten".
+
+## 7. Count guard
+
+Delete one migrated page in the back office, then run `migrate`. Expected: the page is created
+again (the count went up, not down) and exit code 0. The count-drop path (exit code 3) is covered
+by the `CountGuard` unit tests and by `MigrationRunnerTests.Count_drop_stops_with_exit_code_3`,
+which uses a fake target whose second snapshot is lower than the first.
+
+## 8. Repository hygiene
+
+```bash
+scripts/check-repo.sh
+```
+
+Expected: `OK: no client material, no em dashes`.
+
+## 9. Reference run (owner machine only)
+
+Same as steps 3 to 6 with `profiles/pontoonsonly.json`, the restored `PO_Kentico` database and
+`_work/expected-urls.txt`. Expected numbers: SC-001 in [spec.md](spec.md).
