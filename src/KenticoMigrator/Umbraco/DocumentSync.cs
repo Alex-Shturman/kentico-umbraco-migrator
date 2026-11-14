@@ -232,7 +232,7 @@ public sealed class DocumentSync
         if (doc.Publish)
         {
             var body = new PublishRequest([new PublishScheduleRequest(null)]);
-            await WithOneRetryAsync(() => _api.SendAsync(HttpMethod.Put, $"{DocumentPath(doc.Key)}/publish", body, ct), transientOnly: true).ConfigureAwait(false);
+            await _api.SendAsync(HttpMethod.Put, $"{DocumentPath(doc.Key)}/publish", body, ct).ConfigureAwait(false);
         }
 
         return written;
@@ -272,7 +272,7 @@ public sealed class DocumentSync
 
                 var order = wanted.Concat(children.Where(c => !wantedSet.Contains(c))).ToList();
                 var body = new SortRequest(parent is { } id ? new IdRef(id) : null, [.. order.Select((key, index) => new SortItemRequest(key, index))]);
-                await WithOneRetryAsync(() => _api.SendAsync(HttpMethod.Put, "/document/sort", body, ct), transientOnly: false).ConfigureAwait(false);
+                await _api.SendAsync(HttpMethod.Put, "/document/sort", body, ct).ConfigureAwait(false);
                 children.Clear();
                 children.AddRange(order);
                 results.Add(SortResult(parent, parentDoc, ItemOutcome.Updated, null));
@@ -286,20 +286,6 @@ public sealed class DocumentSync
 
     private static ItemResult SortResult(Guid? parent, TargetDocument? parentDoc, ItemOutcome outcome, string? error) =>
         new(parent ?? Guid.Empty, ItemKinds.Sort, parentDoc?.TypeAlias ?? string.Empty, parentDoc?.OldPath ?? "/", outcome, error);
-
-    // One more try for a call whose failure may be momentary. A publish is retried only for a server or network error (a refusal
-    // such as "parent not published" would fail again); a sort is retried for any API failure.
-    private static async Task WithOneRetryAsync(Func<Task> call, bool transientOnly)
-    {
-        try
-        {
-            await call().ConfigureAwait(false);
-        }
-        catch (UmbracoApiException ex) when (!transientOnly || ex.StatusCode is null || (int)ex.StatusCode >= 500)
-        {
-            await call().ConfigureAwait(false);
-        }
-    }
 
     private async Task<List<Guid>> ChildrenOfAsync(Guid? parent, CancellationToken ct)
     {

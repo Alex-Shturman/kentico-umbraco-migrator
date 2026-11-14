@@ -165,9 +165,17 @@ internal sealed class FakeUmbracoApi : IUmbracoApi
         if (method == HttpMethod.Put && parts.Length == 2 && Guid.TryParse(parts[1], out var putId))
         {
             var stored = Stored(parts[0], putId) ?? throw new InvalidOperationException($"Fake: PUT of missing item {path}");
+            var publishDate = stored["variants"]?[0]?["publishDate"]?.DeepClone();
             foreach (var (name, value) in (JsonObject)node!)
             {
                 stored[name] = value?.DeepClone();
+            }
+
+            // Like the real API: an update keeps the publish date; a published page then has pending changes.
+            if (publishDate is not null && stored["variants"]?[0] is JsonObject variant)
+            {
+                variant["publishDate"] = publishDate;
+                variant["state"] = "PublishedPendingChanges";
             }
 
             return Ok(HttpStatusCode.OK);

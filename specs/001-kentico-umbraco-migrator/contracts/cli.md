@@ -66,12 +66,17 @@ summary form, the path of the run folder, and the exit code. No field content is
 
 - **Sorting.** The children of a parent are put in the planned order only in a run that creates, updates or overwrites at
   least one child of that parent, and never when a child of that parent is left alone as edited (`EditedSkipped`). A failed sort
-  is retried once in the same run; if it still fails it is reported as a failed `sort` item, and it is repaired on a later run
-  only when a child of that parent is written again. An order an editor sets is not undone by a run that writes nothing under
+  (after the API client's own retries on server and network errors) is reported as a failed `sort` item, and it is repaired on a
+  later run only when a child of that parent is written again. An order an editor sets is not undone by a run that writes nothing under
   that parent.
-- **Publishing.** A page is published after it is created or updated. A server or network error on publish is retried once; a
-  page that is still not published is reported as failed, and a later run publishes it when it was never published. Pending
-  changes on an already published page are never published by the tool (they may be an editor's held-back draft), and a page an
-  editor unpublished stays unpublished.
+- **Publishing.** A page is published after it is created or updated; the API client already retries server and network errors
+  on the publish call. A page that is still not published is reported as failed. A page that was never published is published
+  by a later run. An update whose publish is refused (a non-transient answer such as "parent not published") stays as pending
+  changes, is reported `Failed` on that run and `Unchanged` afterwards, because the tool never publishes pending changes (they may
+  be an editor's held-back draft). After fixing the cause, publish the page in the back office, or change the page in the source
+  (or in Umbraco) and re-run with `--overwrite-edited`. A page an editor unpublished stays unpublished.
+- **Document types.** Editor additions (properties, groups, allowed children, compositions) are kept and numbered after the
+  planned ones. The tool owns a planned property's alias, name, data type, group and `mandatory` flag: a flag an editor changes is
+  set back to the planned value on the next update of that type, while the pattern and messages of its validation are kept.
 - **Templates.** The tool writes a fingerprint comment into each template. A template whose body no longer matches it is
   reported as "edited in Umbraco" and left alone unless `--overwrite-edited` is given.

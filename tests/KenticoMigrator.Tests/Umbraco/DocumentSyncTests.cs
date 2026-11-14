@@ -474,57 +474,40 @@ public sealed class DocumentSyncTests
     }
 
     [Fact]
-    public async Task Publish_is_retried_once_after_a_transient_failure()
+    public async Task Publish_failure_makes_the_page_failed_and_publish_is_called_once()
     {
-        var failures = 0;
+        // ManagementApiClient already retries PUT on 5xx and network errors, so the sync does not retry on top of it.
         var api = new FakeUmbracoApi
-        {
-            Failure = c => c.Path.EndsWith("/publish", StringComparison.Ordinal) && failures++ == 0
-                ? FakeUmbracoApi.Problem(HttpStatusCode.BadGateway, "Bad gateway")
-                : null,
-        };
-
-        var results = await NewSync(api).SyncAsync([Doc(1, null, "Live", publish: true)], Options, Ct);
-
-        Assert.Equal(ItemOutcome.Created, results.Single().Outcome);
-        Assert.Equal(2, api.Writes.Count(c => c.Path.EndsWith("/publish", StringComparison.Ordinal)));
-    }
-
-    [Fact]
-    public async Task Publish_that_keeps_failing_makes_the_page_failed_and_a_refusal_is_not_retried()
-    {
-        var transient = new FakeUmbracoApi
-        {
-            Failure = c => c.Path.EndsWith("/publish", StringComparison.Ordinal) ? FakeUmbracoApi.Problem(HttpStatusCode.ServiceUnavailable, "Unavailable") : null,
-        };
-        var refused = new FakeUmbracoApi
         {
             Failure = c => c.Path.EndsWith("/publish", StringComparison.Ordinal) ? FakeUmbracoApi.Problem(HttpStatusCode.BadRequest, "Parent not published") : null,
         };
 
-        var first = await NewSync(transient).SyncAsync([Doc(1, null, "Live", publish: true)], Options, Ct);
-        var second = await NewSync(refused).SyncAsync([Doc(1, null, "Live", publish: true)], Options, Ct);
+        var results = await NewSync(api).SyncAsync([Doc(1, null, "Live", publish: true)], Options, Ct);
 
-        Assert.Equal((ItemOutcome.Failed, "HTTP 503 Unavailable"), (first.Single().Outcome, first.Single().Error));
-        Assert.Equal(2, transient.Writes.Count(c => c.Path.EndsWith("/publish", StringComparison.Ordinal)));
-        Assert.Equal(ItemOutcome.Failed, second.Single().Outcome);
-        Assert.Single(refused.Writes, c => c.Path.EndsWith("/publish", StringComparison.Ordinal));
+        Assert.Equal((ItemOutcome.Failed, "HTTP 400 Parent not published"), (results.Single().Outcome, results.Single().Error));
+        Assert.Single(api.Writes, c => c.Path.EndsWith("/publish", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task Failed_sort_is_retried_once_in_the_same_run()
+    public async Task Refused_publish_leaves_pending_changes_that_are_unchanged_on_the_next_run()
     {
-        var sorts = 0;
+        var refuse = true;
         var api = new FakeUmbracoApi
         {
-            Failure = c => c.Path == "/document/sort" && sorts++ == 0 ? FakeUmbracoApi.Problem(HttpStatusCode.BadGateway, "Bad gateway") : null,
+            Failure = c => refuse && c.Path.EndsWith("/publish", StringComparison.Ordinal) ? FakeUmbracoApi.Problem(HttpStatusCode.BadRequest, "Parent not published") : null,
         };
-        var docs = new[] { Doc(1, null, "Root"), Doc(2, 1, "A", sortOrder: 2), Doc(3, 1, "B", sortOrder: 1) };
+        var docs = new[] { Doc(1, null, "Live", publish: true, title: "One") };
+        await NewSync(api).SyncAsync(docs, Options, Ct); // created, publish refused
+        refuse = false;
+        await NewSync(api).SyncAsync(docs, Options, Ct); // never published: healed
+        refuse = true;
+        var changed = new[] { Doc(1, null, "Live", publish: true, title: "Two") };
 
-        var results = await NewSync(api).SyncAsync(docs, Options, Ct);
+        var failed = await NewSync(api).SyncAsync(changed, Options, Ct);
+        var after = await NewSync(api).SyncAsync(changed, Options, Ct);
 
-        Assert.Equal(ItemOutcome.Updated, Assert.Single(results, r => r.Kind == ItemKinds.Sort).Outcome);
-        Assert.Equal([GuidFor(3), GuidFor(2)], api.ChildrenOf(GuidFor(1)));
+        Assert.Equal(ItemOutcome.Failed, failed.Single().Outcome);
+        Assert.Equal(ItemOutcome.Unchanged, after.Single().Outcome);
     }
 
     [Fact]
