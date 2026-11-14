@@ -1,7 +1,7 @@
 namespace KenticoMigrator.Migration;
 
 /// <summary>Fixed aliases of the types the tool creates itself (MAPPING.md 2.1).</summary>
-internal static class PlanAliases
+public static class PlanAliases
 {
     public const string Folder = "folder";
     public const string Seo = "seoComposition";
