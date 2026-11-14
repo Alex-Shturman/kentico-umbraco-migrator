@@ -17,3 +17,8 @@ obj/
 runs/
 appsettings.*.local.json
 .claude/.cc-writes/
+
+# Local databases and backups
+*.bak
+*.mdf
+*.ldf
