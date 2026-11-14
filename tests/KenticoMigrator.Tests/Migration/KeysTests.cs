@@ -39,4 +39,22 @@ public sealed class KeysTests
         Assert.Equal('5', text[14]);
         Assert.Contains(text[19], "89ab"); // RFC variant bits
     }
+
+    [Fact]
+    public void Non_ascii_natural_key_vector()
+    {
+        // Computed with Python: uuid.uuid5(ns, 'datatype:dropdown-\u00e5ngstr\u00f6m \u65e5\u672c') (name is lowercased first)
+        Assert.Equal(
+            Guid.Parse("2c06b30e-21f6-533b-9d3e-dbafdb77d4df"),
+            Keys.Derived("datatype", "dropdown-\u00c5ngstr\u00f6m \u65e5\u672c"));
+    }
+
+    [Fact]
+    public void Source_guids_are_used_as_keys()
+    {
+        var guid = Guid.NewGuid();
+
+        Assert.Equal(guid, Keys.ForAttachment(guid));
+        Assert.Equal(guid, Keys.ForMediaFile(guid));
+    }
 }

@@ -25,9 +25,8 @@ public static class Keys
         name.CopyTo(input, 16);
 
         var hash = SHA1.HashData(input);
-        var bytes = hash.AsSpan(0, 16).ToArray();
-        bytes[6] = (byte)((bytes[6] & 0x0F) | 0x50); // version 5
-        bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80); // RFC variant
-        return new Guid(bytes, bigEndian: true);
+        hash[6] = (byte)((hash[6] & 0x0F) | 0x50); // version 5
+        hash[8] = (byte)((hash[8] & 0x3F) | 0x80); // RFC variant
+        return new Guid(hash.AsSpan(0, 16), bigEndian: true);
     }
 }
