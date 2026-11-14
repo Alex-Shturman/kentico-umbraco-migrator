@@ -484,3 +484,19 @@ INSERT INTO Media_File (FileName, FileTitle, FileDescription, FileExtension, Fil
 (N'kayak-red', N'Kayak red', N'', N'.png', N'image/png', N'boats/kayak-red.png', 524, 160, 100, 'f11e0000-0000-4000-8000-000000000003', 1, 1, '2018-11-05T10:00:00', '2018-11-05T10:00:00'),
 (N'missing', N'Missing', N'', N'.jpg', N'image/jpeg', N'missing.jpg', 2048, 160, 100, 'f11e0000-0000-4000-8000-000000000004', 1, 1, '2018-11-05T10:00:00', '2018-11-05T10:00:00');
 GO
+
+-- ============================================================================
+-- Part 4: rich text with links of every kind
+-- ============================================================================
+
+-- Story (two regions): page links in several forms, a short alias, a brand route with a space,
+-- an attachment image, a media library link, an external link, mailto and an anchor.
+UPDATE CMS_Document SET DocumentContent =
+ N'<content><webpart id="storybody;e7e10002-0000-4000-8000-000000000003"><![CDATA[<p>The shop started in a garage with three boats. See <a href="/About">About us</a> (<a href="/About.aspx">old link</a>), the <a href="https://www.kayaks.example/Catalog/Products/Pacific-Touring-Kayak">Pacific Touring Kayak</a>, or <a href="/visit">visit us</a>.</p><p><img src="~/getattachment/a77ac000-0000-4000-8000-000000000001/pacific-front.jpg?width=96" alt="Pacific front" /></p><p>Download the <a href="~/getmedia/f11e0000-0000-4000-8000-000000000002/kayak-blue.jpg">blue kayak photo</a> or browse <a href="/brand-search/Sea Spirit">Sea Spirit</a> boats.</p>]]></webpart><webpart id="storyintro;e7e10002-0000-4000-8000-000000000002"><![CDATA[<p>A short history of the Kayak Shop. Weather: <a href="https://weather.example.org/lakes">lake forecast</a>, write to <a href="mailto:info@kayaks.example">info@kayaks.example</a> or jump to <a href="#rental">rentals</a>.</p>]]></webpart></content>'
+WHERE DocumentID = 4;
+
+-- Article "Winter storage": an application route, an unknown internal page and a page link.
+UPDATE CONTENT_Article SET ArticleText =
+ N'<p>Store the kayak off the ground, away from direct sun. Buying a <a href="/cart">new cover</a>? See the <a href="/Seasonal/Deals.aspx">seasonal deals</a> and our <a href="/Story">story</a>.</p>'
+WHERE ArticleID = 3;
+GO

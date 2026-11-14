@@ -28,4 +28,5 @@ GROUP BY c.ClassName ORDER BY c.ClassName;"
 
 echo "Attachments (current): $(run_sqlcmd -d Kentico11Sample -W -h -1 -Q 'SET NOCOUNT ON; SELECT COUNT(*) FROM CMS_Attachment;')"
 echo "Media files: $(run_sqlcmd -d Kentico11Sample -W -h -1 -Q 'SET NOCOUNT ON; SELECT COUNT(*) FROM Media_File;')"
+echo "Links (href= in page content and article text): $(run_sqlcmd -d Kentico11Sample -W -h -1 -Q "SET NOCOUNT ON; SELECT SUM((LEN(c) - LEN(REPLACE(c, 'href=', ''))) / 5) FROM (SELECT CAST(DocumentContent AS nvarchar(max)) AS c FROM CMS_Document UNION ALL SELECT CAST(ArticleText AS nvarchar(max)) FROM CONTENT_Article) x;")"
 echo "Aliases: $(run_sqlcmd -d Kentico11Sample -W -h -1 -Q 'SET NOCOUNT ON; SELECT COUNT(*) FROM CMS_DocumentAlias;')"

@@ -68,11 +68,34 @@ The media library `Gallery` has four `Media_File` rows. Three files are committe
 `sample/media/Gallery/` (`dock.jpg`, `boats/kayak-blue.jpg`, `boats/kayak-red.png`); `missing.jpg`
 is not on disk. A library file is found at `<mediaRoot>/<LibraryFolder>/<FilePath>`.
 
+## Links in rich text
+
+Twelve `href=` attributes plus one image `src` in total (the restore script prints the count):
+
+| Where | Link | Kind |
+|---|---|---|
+| `/Story`, region `storybody` | `/About` | page by alias path |
+| | `/About.aspx` | page, `.aspx` form |
+| | `https://www.kayaks.example/Catalog/Products/Pacific-Touring-Kayak` | page, absolute URL on an own host |
+| | `/visit` | page by short document alias (alias row of `/Contact`) |
+| | `~/getmedia/<guid>/kayak-blue.jpg` | media library file |
+| | `/brand-search/Sea Spirit` | brand route, name with a space |
+| | `<img src="~/getattachment/<guid>/pacific-front.jpg?width=96">` | attachment image |
+| `/Story`, region `storyintro` | `https://weather.example.org/lakes` | external site |
+| | `mailto:info@kayaks.example` | mail |
+| | `#rental` | anchor |
+| `/Articles/Winter-Storage`, `ArticleText` | `/cart` | application route |
+| | `/Seasonal/Deals.aspx` | unknown internal page |
+| | `/Story` | page |
+
+Own hosts needed in the profile: `kayaks.example` and `www.kayaks.example`.
+
 ## Profile values for Track 3
 
 `profiles/sample.json` is owned by Track 3. The sample needs these two values in it:
 
 ```json
 "notUploadedPaths": [ "/Downloads/Paddling-Map" ],
-"mediaRoot": "sample/media"
+"mediaRoot": "sample/media",
+"ownHosts": [ "kayaks.example", "www.kayaks.example" ]
 ```
