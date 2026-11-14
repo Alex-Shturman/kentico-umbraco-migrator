@@ -57,7 +57,7 @@ public sealed class MediaSync(IUmbracoApi api)
             }
         }
 
-        var outcomes = results.Skip(firstOfThisRun).ToDictionary(r => r.Key, r => r.Outcome);
+        var outcomes = results.Skip(firstOfThisRun).GroupBy(r => r.Key).ToDictionary(g => g.Key, g => g.Last().Outcome);
         await ReadUrlsAsync(
             [.. media.Where(m => m.MediaType != MediaType.Folder && outcomes.TryGetValue(m.Key, out var o) && o is not (ItemOutcome.Failed or ItemOutcome.WouldCreate)).Select(m => m.Key)],
             ct).ConfigureAwait(false);
