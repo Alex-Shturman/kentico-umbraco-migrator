@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -16,12 +17,12 @@ public sealed record SiteProfile(
     IReadOnlyList<UnlinkedRowRule> UnlinkedRows,
     string? MediaRoot)
 {
-    /// <summary>Allowed values of <see cref="FieldMapping.Editor"/>.</summary>
-    public static readonly IReadOnlySet<string> KnownEditors = new HashSet<string>(StringComparer.Ordinal)
+    /// <summary>Allowed values of <see cref="FieldMapping.Editor"/> (case-sensitive).</summary>
+    public static readonly FrozenSet<string> KnownEditors = new[]
     {
         "TextBox", "TextArea", "RichText", "Integer", "Decimal", "TrueFalse", "DateTime", "Tags",
         "MediaSingle", "MediaMultiple", "DropDown",
-    };
+    }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -30,13 +31,28 @@ public sealed record SiteProfile(
         AllowTrailingCommas = true,
     };
 
-    /// <summary>Loads and validates a profile. Throws <see cref="InvalidDataException"/> when it is invalid.</summary>
+    /// <summary>
+    /// Loads and validates a profile. Every problem (unreadable file, bad JSON, missing or invalid
+    /// values) is reported as <see cref="InvalidDataException"/> so the runner can map it to exit code 2.
+    /// Checks that need the source (unknown Kentico class, unresolved parent paths) happen in PlanBuilder.
+    /// </summary>
     public static SiteProfile Load(string path)
     {
+        string text;
+        try
+        {
+            text = File.ReadAllText(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // FileNotFoundException and DirectoryNotFoundException are IOExceptions.
+            throw new InvalidDataException($"Cannot read profile '{path}': {ex.Message}", ex);
+        }
+
         SiteProfile? raw;
         try
         {
-            raw = JsonSerializer.Deserialize<SiteProfile>(File.ReadAllText(path), JsonOptions);
+            raw = JsonSerializer.Deserialize<SiteProfile>(text, JsonOptions);
         }
         catch (JsonException ex)
         {
@@ -48,47 +64,99 @@ public sealed record SiteProfile(
             throw new InvalidDataException($"Profile '{path}' is empty.");
         }
 
-        var profile = raw.Normalize();
-        profile.Validate();
+        return raw.NormalizeAndValidate();
+    }
+
+    // System.Text.Json leaves missing values null on positional records, so check them here.
+    private SiteProfile NormalizeAndValidate()
+    {
+        RequireText(Name, "profile", "name");
+
+        var profile = this with
+        {
+            OwnHosts = Elements(OwnHosts, "ownHosts"),
+            ExcludedPathPrefixes = Elements(ExcludedPathPrefixes, "excludedPathPrefixes"),
+            FolderPaths = Elements(FolderPaths, "folderPaths"),
+            ApplicationRoutePrefixes = Elements(ApplicationRoutePrefixes, "applicationRoutePrefixes"),
+            NotUploadedPaths = Elements(NotUploadedPaths, "notUploadedPaths"),
+            Types = Elements(Types, "types").Select(NormalizeType).ToList(),
+            Reparent = Elements(Reparent, "reparent").Select(NormalizeReparent).ToList(),
+            UnlinkedRows = Elements(UnlinkedRows, "unlinkedRows").Select(NormalizeUnlinked).ToList(),
+        };
         return profile;
     }
 
-    // System.Text.Json leaves missing collections null on positional records.
-    private SiteProfile Normalize() => this with
+    private static TypeMapping NormalizeType(TypeMapping type)
     {
-        OwnHosts = OwnHosts ?? [],
-        ExcludedPathPrefixes = ExcludedPathPrefixes ?? [],
-        FolderPaths = FolderPaths ?? [],
-        ApplicationRoutePrefixes = ApplicationRoutePrefixes ?? [],
-        NotUploadedPaths = NotUploadedPaths ?? [],
-        Types = (Types ?? []).Select(t => t with
-        {
-            AllowedChildren = t.AllowedChildren ?? [],
-            Fields = t.Fields ?? [],
-        }).ToList(),
-        Reparent = Reparent ?? [],
-        UnlinkedRows = UnlinkedRows ?? [],
-    };
+        RequireText(type.KenticoClass, "types[]", "kenticoClass");
+        var where = $"type '{type.TargetAlias}'";
+        RequireText(type.TargetAlias, $"types[] for '{type.KenticoClass}'", "targetAlias");
 
-    private void Validate()
-    {
-        foreach (var type in Types)
+        var fields = Elements(type.Fields, $"{where} fields");
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var field in fields)
         {
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var field in type.Fields)
+            RequireText(field.TargetAlias, where, "target");
+            RequireText(field.Source, $"{where}, field '{field.TargetAlias}'", "source");
+            RequireText(field.Editor, $"{where}, field '{field.TargetAlias}'", "editor");
+
+            if (!KnownEditors.Contains(field.Editor))
             {
-                if (!KnownEditors.Contains(field.Editor))
-                {
-                    throw new InvalidDataException(
-                        $"Type '{type.TargetAlias}': unknown editor '{field.Editor}' for field '{field.TargetAlias}'.");
-                }
-
-                if (!seen.Add(field.TargetAlias))
-                {
-                    throw new InvalidDataException(
-                        $"Type '{type.TargetAlias}': target alias '{field.TargetAlias}' is used more than once.");
-                }
+                throw new InvalidDataException(
+                    $"Type '{type.TargetAlias}': unknown editor '{field.Editor}' for field '{field.TargetAlias}'.");
             }
+
+            if (!seen.Add(field.TargetAlias))
+            {
+                throw new InvalidDataException(
+                    $"Type '{type.TargetAlias}': target alias '{field.TargetAlias}' is used more than once.");
+            }
+        }
+
+        return type with
+        {
+            TargetName = string.IsNullOrWhiteSpace(type.TargetName) ? type.TargetAlias : type.TargetName,
+            AllowedChildren = Elements(type.AllowedChildren, $"{where} allowedChildren"),
+            Fields = fields.Select(f => f with { Group = f.Group ?? string.Empty }).ToList(),
+        };
+    }
+
+    private static ReparentRule NormalizeReparent(ReparentRule rule)
+    {
+        RequireText(rule.KenticoClass, "reparent[]", "kenticoClass");
+        RequireText(rule.NewParentPath, $"reparent for '{rule.KenticoClass}'", "newParentPath");
+        RequireText(rule.UrlNameFrom, $"reparent for '{rule.KenticoClass}'", "urlNameFrom");
+        return rule;
+    }
+
+    private static UnlinkedRowRule NormalizeUnlinked(UnlinkedRowRule rule)
+    {
+        RequireText(rule.KenticoClass, "unlinkedRows[]", "kenticoClass");
+        RequireText(rule.NameField, $"unlinkedRows for '{rule.KenticoClass}'", "nameField");
+        RequireText(rule.ParentPath, $"unlinkedRows for '{rule.KenticoClass}'", "parentPath");
+        return rule;
+    }
+
+    private static IReadOnlyList<T> Elements<T>(IReadOnlyList<T>? list, string what)
+    {
+        if (list is null)
+        {
+            return [];
+        }
+
+        if (list.Any(e => e is null))
+        {
+            throw new InvalidDataException($"'{what}' contains a null entry.");
+        }
+
+        return list;
+    }
+
+    private static void RequireText(string? value, string where, string property)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new InvalidDataException($"In {where}: required value '{property}' is missing or empty.");
         }
     }
 }

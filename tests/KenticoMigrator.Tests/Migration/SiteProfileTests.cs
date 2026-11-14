@@ -123,4 +123,60 @@ public sealed class SiteProfileTests : IDisposable
 
         Assert.Equal("sample", profile.Name);
     }
+
+    [Fact]
+    public void Rejects_missing_target()
+    {
+        var json = ValidJson.Replace("\"target\": \"bodyText\", ", "");
+
+        var ex = Assert.Throws<InvalidDataException>(() => SiteProfile.Load(Write(json)));
+
+        Assert.Contains("target", ex.Message);
+        Assert.Contains("contentPage", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_null_list_element()
+    {
+        var json = ValidJson.Replace("\"fields\": []", "\"fields\": [null]");
+
+        var ex = Assert.Throws<InvalidDataException>(() => SiteProfile.Load(Write(json)));
+
+        Assert.Contains("null", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_missing_name()
+    {
+        var ex = Assert.Throws<InvalidDataException>(() => SiteProfile.Load(Write("{}")));
+
+        Assert.Contains("name", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_missing_kentico_class()
+    {
+        var json = ValidJson.Replace("\"kenticoClass\": \"DEMO.Brand\", \"nameField\"", "\"nameField\"");
+
+        var ex = Assert.Throws<InvalidDataException>(() => SiteProfile.Load(Write(json)));
+
+        Assert.Contains("kenticoClass", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_missing_file()
+    {
+        var path = Path.Combine(_dir, "nope.json");
+
+        var ex = Assert.Throws<InvalidDataException>(() => SiteProfile.Load(path));
+
+        Assert.Contains("nope.json", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_unreadable_path()
+    {
+        // A directory cannot be read as a file.
+        Assert.Throws<InvalidDataException>(() => SiteProfile.Load(_dir));
+    }
 }
