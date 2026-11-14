@@ -1,0 +1,150 @@
+{
+  "template": {
+    "id": "4d6fb1e6-bd4b-48d1-950e-01ae96398977"
+  },
+  "isTrashed": false,
+  "documentType": {
+    "id": "6a14313a-10dc-4dda-886a-62decb0da8a7",
+    "icon": "icon-document",
+    "collection": null
+  },
+  "id": "a497af8c-9481-4145-a80a-caeba50ac98b",
+  "flags": [],
+  "values": [
+    {
+      "editorAlias": "Umbraco.TextBox",
+      "culture": null,
+      "segment": null,
+      "alias": "umbracoUrlName",
+      "value": "fixture-page"
+    },
+    {
+      "editorAlias": "Umbraco.TextBox",
+      "culture": null,
+      "segment": null,
+      "alias": "title",
+      "value": "Fixture page title"
+    },
+    {
+      "editorAlias": "Umbraco.TextArea",
+      "culture": null,
+      "segment": null,
+      "alias": "teaser",
+      "value": "Line one of the teaser.\nLine two of the teaser."
+    },
+    {
+      "editorAlias": "Umbraco.RichText",
+      "culture": null,
+      "segment": null,
+      "alias": "body",
+      "value": {
+        "markup": "<p>Intro with <a href=\"/{localLink:a2b7f372-080d-4a73-a0e0-94a9ca5569f8}\" type=\"document\" title=\"Target\">an internal link</a> and <a href=\"/{localLink:62bfc761-43a1-4c6f-99f6-dbd0490af0ca}\" type=\"media\">a media link</a>.</p><p><img src=\"/media/rmhmqr5w/kayak-photo.png\" alt=\"Kayak\" data-udi=\"umb://media/f18ec404bd9f414287e0542d360589a6\"></p><p><a href=\"https://example.test/page\">An external link</a></p>",
+        "blocks": {
+          "layout": {},
+          "contentData": [],
+          "settingsData": [],
+          "expose": []
+        }
+      }
+    },
+    {
+      "editorAlias": "Umbraco.Integer",
+      "culture": null,
+      "segment": null,
+      "alias": "count",
+      "value": 42
+    },
+    {
+      "editorAlias": "Umbraco.Decimal",
+      "culture": null,
+      "segment": null,
+      "alias": "price",
+      "value": 12.5
+    },
+    {
+      "editorAlias": "Umbraco.TrueFalse",
+      "culture": null,
+      "segment": null,
+      "alias": "flag",
+      "value": true
+    },
+    {
+      "editorAlias": "Umbraco.DateTime",
+      "culture": null,
+      "segment": null,
+      "alias": "published",
+      "value": "2026-03-01 10:30:00"
+    },
+    {
+      "editorAlias": "Umbraco.Tags",
+      "culture": null,
+      "segment": null,
+      "alias": "tags",
+      "value": [
+        "kayak",
+        "touring"
+      ]
+    },
+    {
+      "editorAlias": "Umbraco.DropDown.Flexible",
+      "culture": null,
+      "segment": null,
+      "alias": "kind",
+      "value": [
+        "Sea kayak"
+      ]
+    },
+    {
+      "editorAlias": "Umbraco.MediaPicker3",
+      "culture": null,
+      "segment": null,
+      "alias": "heroImage",
+      "value": [
+        {
+          "key": "0701c4de-007e-4e8a-bc3d-cff0e727558a",
+          "mediaKey": "f18ec404-bd9f-4142-87e0-542d360589a6",
+          "mediaTypeAlias": "Image",
+          "crops": [],
+          "focalPoint": null
+        }
+      ]
+    },
+    {
+      "editorAlias": "Umbraco.MediaPicker3",
+      "culture": null,
+      "segment": null,
+      "alias": "gallery",
+      "value": [
+        {
+          "key": "c687577d-6eb5-4819-bd0d-b9a01b097f5e",
+          "mediaKey": "f18ec404-bd9f-4142-87e0-542d360589a6",
+          "mediaTypeAlias": "Image",
+          "crops": [],
+          "focalPoint": null
+        },
+        {
+          "key": "33adcea6-e4bb-4d9b-b78c-283584c9e5a5",
+          "mediaKey": "62bfc761-43a1-4c6f-99f6-dbd0490af0ca",
+          "mediaTypeAlias": "File",
+          "crops": [],
+          "focalPoint": null
+        }
+      ]
+    }
+  ],
+  "variants": [
+    {
+      "state": "Published",
+      "publishDate": "2026-11-14T07:00:23.097+00:00",
+      "scheduledPublishDate": null,
+      "scheduledUnpublishDate": null,
+      "id": "00000000-0000-0000-0000-000000000000",
+      "flags": [],
+      "createDate": "2026-11-14T06:59:44.223+00:00",
+      "updateDate": "2026-11-14T07:00:23.097+00:00",
+      "culture": null,
+      "segment": null,
+      "name": "Fixture page"
+    }
+  ]
+}

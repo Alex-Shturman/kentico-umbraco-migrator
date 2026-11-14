@@ -1,0 +1,44 @@
+{
+  "isTrashed": false,
+  "mediaType": {
+    "id": "4c52d8ab-54e6-40cd-999c-7a5f24903e4d",
+    "icon": "icon-document",
+    "collection": null
+  },
+  "id": "62bfc761-43a1-4c6f-99f6-dbd0490af0ca",
+  "flags": [],
+  "values": [
+    {
+      "editorAlias": "Umbraco.UploadField",
+      "culture": null,
+      "segment": null,
+      "alias": "umbracoFile",
+      "value": {
+        "src": "/media/skxfjqug/kayak-guide.txt"
+      }
+    },
+    {
+      "editorAlias": "Umbraco.Label",
+      "culture": null,
+      "segment": null,
+      "alias": "umbracoExtension",
+      "value": "txt"
+    },
+    {
+      "editorAlias": "Umbraco.Label",
+      "culture": null,
+      "segment": null,
+      "alias": "umbracoBytes",
+      "value": "27"
+    }
+  ],
+  "variants": [
+    {
+      "createDate": "2026-11-14T06:58:45.497+00:00",
+      "updateDate": "2026-11-14T06:58:45.497+00:00",
+      "culture": null,
+      "segment": null,
+      "name": "Kayak guide"
+    }
+  ]
+}

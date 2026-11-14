@@ -177,8 +177,10 @@ Rules:
 - Hidden from navigation: `umbracoNaviHide`.
 - Created and updated dates: Umbraco sets its own create date. The original
   dates are written to `publishDate` (articles) and to the run report.
-- Old URLs are compared case-insensitively. Whether Umbraco serves `/AboutUs`
-  as well as `/aboutus` is checked in the implementation, not assumed.
+- Old URLs are compared case-insensitively. Verified on Umbraco 17.8.1: a page at
+  `/fixture-page` is served (HTTP 200, no redirect) for `/Fixture-Page` and
+  `/FIXTURE-PAGE` too, so a case-only difference needs no redirect. A request
+  ending in `.aspx` is not served as content (404) and needs a redirect.
 
 ## 4. Media
 
