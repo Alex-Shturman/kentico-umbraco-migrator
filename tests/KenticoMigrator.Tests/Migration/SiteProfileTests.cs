@@ -1,0 +1,126 @@
+using KenticoMigrator.Migration;
+
+namespace KenticoMigrator.Tests.Migration;
+
+public sealed class SiteProfileTests : IDisposable
+{
+    private readonly string _dir = Directory.CreateTempSubdirectory("profile-tests").FullName;
+
+    public void Dispose() => Directory.Delete(_dir, recursive: true);
+
+    private string Write(string json)
+    {
+        var path = Path.Combine(_dir, "profile.json");
+        File.WriteAllText(path, json);
+        return path;
+    }
+
+    private const string ValidJson = """
+        {
+          "name": "sample",
+          "ownHosts": ["kayaks.example"],
+          "mediaRoot": "sample/media",
+          "excludedPathPrefixes": ["/Account"],
+          "folderPaths": ["/Catalog"],
+          "applicationRoutePrefixes": ["/cart"],
+          "notUploadedPaths": ["/Files/feed"],
+          "types": [
+            {
+              "kenticoClass": "CMS.MenuItem",
+              "targetAlias": "contentPage",
+              "targetName": "Content page",
+              "hasTemplate": true,
+              "allowedChildren": ["contentPage"],
+              "fields": [
+                { "source": "doc:DocumentName", "target": "title", "editor": "TextBox", "group": "Content" },
+                { "source": "region:first", "target": "bodyText", "editor": "RichText", "group": "Content" }
+              ]
+            },
+            {
+              "kenticoClass": "CMS.MenuItem",
+              "pathOverride": "/Articles",
+              "targetAlias": "articleList",
+              "targetName": "Article list",
+              "hasTemplate": true,
+              "allowedChildren": [],
+              "fields": []
+            }
+          ],
+          "reparent": [
+            { "kenticoClass": "DEMO.Brand", "newParentPath": "/brands", "urlNameFrom": "NodeAlias", "oldRoutePattern": "/brand-search/{Name}" }
+          ],
+          "unlinkedRows": [
+            { "kenticoClass": "DEMO.Brand", "nameField": "Name", "parentPath": "/brands", "publish": false }
+          ]
+        }
+        """;
+
+    [Fact]
+    public void Loads_valid_profile()
+    {
+        var profile = SiteProfile.Load(Write(ValidJson));
+
+        Assert.Equal("sample", profile.Name);
+        Assert.Equal(["kayaks.example"], profile.OwnHosts);
+        Assert.Equal("sample/media", profile.MediaRoot);
+        Assert.Equal(["/Account"], profile.ExcludedPathPrefixes);
+        Assert.Equal(["/Catalog"], profile.FolderPaths);
+        Assert.Equal(["/cart"], profile.ApplicationRoutePrefixes);
+        Assert.Equal(["/Files/feed"], profile.NotUploadedPaths);
+
+        Assert.Equal(2, profile.Types.Count);
+        var page = profile.Types[0];
+        Assert.Equal("CMS.MenuItem", page.KenticoClass);
+        Assert.Equal("contentPage", page.TargetAlias);
+        Assert.True(page.HasTemplate);
+        Assert.Null(page.PathOverride);
+        Assert.Equal(new FieldMapping("region:first", "bodyText", "RichText", "Content"), page.Fields[1]);
+        Assert.Equal("/Articles", profile.Types[1].PathOverride);
+
+        var rule = Assert.Single(profile.Reparent);
+        Assert.Equal(new ReparentRule("DEMO.Brand", "/brands", "NodeAlias", "/brand-search/{Name}"), rule);
+        Assert.Equal(new UnlinkedRowRule("DEMO.Brand", "Name", "/brands", false), Assert.Single(profile.UnlinkedRows));
+    }
+
+    [Fact]
+    public void Missing_optional_sections_become_empty()
+    {
+        var profile = SiteProfile.Load(Write("""{ "name": "tiny" }"""));
+
+        Assert.Empty(profile.OwnHosts);
+        Assert.Empty(profile.Types);
+        Assert.Empty(profile.Reparent);
+        Assert.Null(profile.MediaRoot);
+    }
+
+    [Fact]
+    public void Rejects_unknown_editor()
+    {
+        var json = ValidJson.Replace("\"RichText\"", "\"Wysiwyg\"");
+
+        var ex = Assert.Throws<InvalidDataException>(() => SiteProfile.Load(Write(json)));
+
+        Assert.Contains("Wysiwyg", ex.Message);
+    }
+
+    [Fact]
+    public void Rejects_duplicate_target_alias()
+    {
+        var json = ValidJson.Replace("\"target\": \"bodyText\"", "\"target\": \"title\"");
+
+        var ex = Assert.Throws<InvalidDataException>(() => SiteProfile.Load(Write(json)));
+
+        Assert.Contains("title", ex.Message);
+        Assert.Contains("contentPage", ex.Message);
+    }
+
+    [Fact]
+    public void Accepts_jsonc_comments()
+    {
+        var json = "// leading comment\n" + ValidJson.Replace("\"name\": \"sample\",", "\"name\": \"sample\", /* inline */");
+
+        var profile = SiteProfile.Load(Write(json));
+
+        Assert.Equal("sample", profile.Name);
+    }
+}

@@ -5,6 +5,9 @@
     <RootNamespace>KenticoMigrator.Tests</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\KenticoMigrator\KenticoMigrator.csproj" />
   </ItemGroup>
   <ItemGroup>
