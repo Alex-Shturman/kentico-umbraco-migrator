@@ -49,11 +49,11 @@ internal sealed class EndToEndHost : IDisposable
         var secret = config["Umbraco:ClientSecret"];
         Assert.SkipWhen(string.IsNullOrEmpty(secret), "Umbraco:ClientSecret is not configured.");
 
-        var baseUrl = config["Umbraco:BaseUrl"] is { Length: > 0 } url ? url : "https://localhost:44317";
+        var baseUrl = config["Umbraco:BaseUrl"] is { Length: > 0 } url ? url : UmbracoOptions.DefaultBaseUrl;
         return new EndToEndHost(
             ManagementApiClient.Create(new UmbracoOptions(
                 baseUrl,
-                config["Umbraco:ClientId"] is { Length: > 0 } id ? id : "umbraco-back-office-migrator",
+                config["Umbraco:ClientId"] is { Length: > 0 } id ? id : UmbracoOptions.DefaultClientId,
                 secret!,
                 AllowUntrustedCertificate: true)),
             baseUrl);
