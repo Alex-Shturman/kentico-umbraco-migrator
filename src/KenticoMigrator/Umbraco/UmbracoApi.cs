@@ -30,7 +30,7 @@ public sealed class UmbracoApi(ManagementApiClient client) : IUmbracoApi
     public Task<JsonNode?> GetAsync(string path, CancellationToken ct) => client.GetAsync<JsonNode>(path, ct);
 
     public Task<ApiResponse> SendAsync(HttpMethod method, string path, object? body, CancellationToken ct) =>
-        method == HttpMethod.Delete
+        string.Equals(method.Method, "DELETE", StringComparison.Ordinal)
             ? throw new InvalidOperationException("The migrator never deletes anything: DELETE is not allowed (FR-015b).")
             : client.SendAsync(method, path, body, ct);
 

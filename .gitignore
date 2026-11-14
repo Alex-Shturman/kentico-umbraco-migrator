@@ -23,3 +23,8 @@ appsettings.*.local.json
 *.mdf
 *.ldf
 .claude/worktrees/
+
+# Client archives (Constitution I)
+*.zip
+*.7z
+*.bacpac
