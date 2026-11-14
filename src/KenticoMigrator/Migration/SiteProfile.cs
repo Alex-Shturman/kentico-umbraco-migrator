@@ -15,7 +15,9 @@ public sealed record SiteProfile(
     IReadOnlyList<TypeMapping> Types,
     IReadOnlyList<ReparentRule> Reparent,
     IReadOnlyList<UnlinkedRowRule> UnlinkedRows,
-    string? MediaRoot)
+    string? MediaRoot,
+    IReadOnlyList<PlacementRule> Placements = null!,
+    SettingsFolderRule? SettingsFolder = null)
 {
     /// <summary>Allowed values of <see cref="FieldMapping.Editor"/> (case-sensitive).</summary>
     public static readonly FrozenSet<string> KnownEditors = new[]
@@ -82,6 +84,8 @@ public sealed record SiteProfile(
             Types = Elements(Types, "types").Select(NormalizeType).ToList(),
             Reparent = Elements(Reparent, "reparent").Select(NormalizeReparent).ToList(),
             UnlinkedRows = Elements(UnlinkedRows, "unlinkedRows").Select(NormalizeUnlinked).ToList(),
+            Placements = Elements(Placements, "placements").Select(NormalizePlacement).ToList(),
+            SettingsFolder = SettingsFolder is null ? null : NormalizeSettingsFolder(SettingsFolder),
         };
         return profile;
     }
@@ -126,6 +130,20 @@ public sealed record SiteProfile(
         RequireText(rule.KenticoClass, "reparent[]", "kenticoClass");
         RequireText(rule.NewParentPath, $"reparent for '{rule.KenticoClass}'", "newParentPath");
         RequireText(rule.UrlNameFrom, $"reparent for '{rule.KenticoClass}'", "urlNameFrom");
+        return rule;
+    }
+
+    private static PlacementRule NormalizePlacement(PlacementRule rule)
+    {
+        RequireText(rule.Path, "placements[]", "path");
+        RequireText(rule.NewParentPath, $"placement of '{rule.Path}'", "newParentPath");
+        return rule;
+    }
+
+    private static SettingsFolderRule NormalizeSettingsFolder(SettingsFolderRule rule)
+    {
+        RequireText(rule.Path, "settingsFolder", "path");
+        RequireText(rule.Name, "settingsFolder", "name");
         return rule;
     }
 
@@ -195,3 +213,16 @@ public sealed record UnlinkedRowRule(
     string NameField,
     string ParentPath,
     bool Publish);
+
+/// <summary>
+/// Moves the page at <paramref name="Path"/> (with everything below it) under another page: <paramref name="NewParentPath"/> is the
+/// path of a planned page, the settings folder, or <c>/</c> for the top level (below the home page). <paramref name="UrlName"/>
+/// replaces the URL name of the page.
+/// </summary>
+public sealed record PlacementRule(string Path, string NewParentPath, string? UrlName);
+
+/// <summary>
+/// A folder the tool creates itself at the top level, published and hidden from navigation and sitemap, for lookup data.
+/// <paramref name="Path"/> is the name by which placements address it; it must not be a path of a source page.
+/// </summary>
+public sealed record SettingsFolderRule(string Path, string Name);

@@ -46,6 +46,11 @@ class names appear; never content values (Constitution I). Record shapes:
   ],
   "unlinkedRows": [
     { "kenticoClass": "DEMO.Brand", "nameField": "Name", "parentPath": "/brands", "publish": false }
+  ],
+  "settingsFolder": { "path": "/Settings", "name": "Settings" },   // optional: tool-owned hidden folder for lookup data
+  "placements": [                                                  // optional: move a page with everything below it
+    { "path": "/Listings/Search-Featured", "newParentPath": "/", "urlName": "search-featured" },
+    { "path": "/Listings/ListingCategory", "newParentPath": "/Settings" }
   ]
 }
 ```
@@ -66,6 +71,18 @@ class names appear; never content values (Constitution I). Record shapes:
 `TextBox`, `TextArea`, `RichText`, `Integer`, `Decimal`, `TrueFalse`, `DateTime`, `Tags`,
 `MediaSingle`, `MediaMultiple`, `DropDown` (options taken from the Kentico field definition).
 
+## `placements` and `settingsFolder`
+
+A placement moves the page at `path` (a source alias path, for example a container such as a brand list) under `newParentPath`
+together with everything below it. `newParentPath` is the path of another planned page, the `settingsFolder` path, or `/` for the
+top level (below the home page, whose URL segment Umbraco hides). `urlName`, when given, replaces the URL name of the moved
+page, so a container can be served at a chosen top-level URL (`/search-featured/<alias>` in the reference profile). A
+`reparent` rule still decides the parent of a class of pages; a placement decides the parent of one page.
+
+`settingsFolder` makes the tool create one folder (`contentFolder`, no template, published, `umbracoNaviHide` and
+`hideFromSitemap` set) at the top level, sorted after the source pages. Its `path` is only the name placements use to address it;
+it must not be the path of a source page. Its key is derived from the path, so re-runs find it.
+
 ## Fixed behaviour not configurable
 
 SEO, navigation and migration compositions are added to every page type (MAPPING.md 2.1); every
@@ -75,9 +92,10 @@ page gets `umbracoUrlName` from its node alias unless a reparent rule says other
 
 Load-time (`SiteProfile.Load`, any problem is an `InvalidDataException`, exit code 2): unreadable
 file or invalid JSON, missing or empty required values (`name`, `kenticoClass`, `targetAlias`,
-`source`, `target`, `editor`, `newParentPath`, `urlNameFrom`, `nameField`, `parentPath`), null list
+`source`, `target`, `editor`, `newParentPath`, `urlNameFrom`, `nameField`, `parentPath`, placement `path` and
+`newParentPath`, settings folder `path` and `name`), null list
 entries, an unknown `editor` value, a `target` alias that repeats within a type.
 
 Plan-time (`PlanBuilder`, reported as a `PlanIssue` with severity `error`, exit code 2, nothing is
-written): a `kenticoClass` unknown to the source, a path in `newParentPath`/`parentPath` that does
-not resolve to a planned item.
+written): a `kenticoClass` unknown to the source, a path in `newParentPath`/`parentPath` or a placement
+`path`/`newParentPath` that does not resolve to a planned item, a settings folder path that is a source page.

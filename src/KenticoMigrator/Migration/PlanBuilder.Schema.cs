@@ -182,7 +182,8 @@ public sealed partial class PlanBuilder
             TemplateAlias: null,
             AllowedAtRoot: false,
             [.. mapped.Select(t => t.Alias), PlanAliases.Folder],
-            [PlanAliases.MigrationComposition],
+            // The navigation composition lets the tool-owned settings folder be hidden; other folders do not write its values.
+            [PlanAliases.Navigation, PlanAliases.MigrationComposition],
             [],
             IsElementOrComposition: false));
         documentTypes.AddRange(mapped);

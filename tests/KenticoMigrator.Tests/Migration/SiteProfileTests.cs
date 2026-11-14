@@ -179,4 +179,20 @@ public sealed class SiteProfileTests : IDisposable
         // A directory cannot be read as a file.
         Assert.Throws<InvalidDataException>(() => SiteProfile.Load(_dir));
     }
+
+    [Fact]
+    public void Placements_and_settings_folder_are_loaded_and_validated()
+    {
+        var json = ValidJson.Replace("\"types\":", "\"settingsFolder\": { \"path\": \"/Settings\", \"name\": \"Settings\" }, \"placements\": [ { \"path\": \"/Catalog\", \"newParentPath\": \"/\", \"urlName\": \"shop\" } ], \"types\":");
+
+        var profile = SiteProfile.Load(Write(json));
+
+        Assert.Equal(new SettingsFolderRule("/Settings", "Settings"), profile.SettingsFolder);
+        Assert.Equal(new PlacementRule("/Catalog", "/", "shop"), Assert.Single(profile.Placements));
+        Assert.Empty(SiteProfile.Load(Write(ValidJson)).Placements);
+        Assert.Null(SiteProfile.Load(Write(ValidJson)).SettingsFolder);
+
+        var missing = ValidJson.Replace("\"types\":", "\"placements\": [ { \"path\": \"/Catalog\" } ], \"types\":");
+        Assert.Contains("newParentPath", Assert.Throws<InvalidDataException>(() => SiteProfile.Load(Write(missing))).Message);
+    }
 }

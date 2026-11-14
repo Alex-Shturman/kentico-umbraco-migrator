@@ -19,6 +19,12 @@ public sealed partial class PlanBuilder
             values[PlanAliases.HideFromSitemap] = new("TrueFalse", !(doc?.ShowInSitemap ?? true));
         }
 
+        if (node.IsSettings)
+        {
+            values[PlanAliases.NaviHide] = new("TrueFalse", true);
+            values[PlanAliases.HideFromSitemap] = new("TrueFalse", true);
+        }
+
         values[PlanAliases.SourceKey] = new("TextBox", node.Key.ToString());
 
         foreach (var field in node.Mapping?.Fields ?? [])

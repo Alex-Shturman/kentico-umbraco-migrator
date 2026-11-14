@@ -479,5 +479,32 @@
       "parentPath": "/Listings/Search-Featured",
       "publish": false
     }
+  ],
+  "settingsFolder": {
+    "path": "/Settings",
+    "name": "Settings"
+  },
+  "placements": [
+    {
+      "path": "/Listings/Search-Featured",
+      "newParentPath": "/",
+      "urlName": "search-featured"
+    },
+    {
+      "path": "/Listings/ListingCategory",
+      "newParentPath": "/Settings"
+    },
+    {
+      "path": "/Listings/ListingHorsepower",
+      "newParentPath": "/Settings"
+    },
+    {
+      "path": "/Listings/ListingTypes",
+      "newParentPath": "/Settings"
+    },
+    {
+      "path": "/Listings/ListingRenew",
+      "newParentPath": "/Settings"
+    }
   ]
 }

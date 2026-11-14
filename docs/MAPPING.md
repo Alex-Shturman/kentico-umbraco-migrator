@@ -58,10 +58,13 @@ meta fields with their own `MetaTitle`/`MetaDescription`/`MetaKeywords`.
 
 ### 2.3 Lookup types (decision Q1)
 
-Without a template. They stay below their source containers (`/Listings/ListingCategory`, `/Listings/ListingHorsepower`,
-`/Listings/ListingTypes`, `/Listings/ListingRenew`), which become template-less folders: the tool plans only pages that exist
-in the source tree and cannot create a new `settings` folder. The lookup pages therefore answer 404 on the site, like the
-folders (verified by the reference run).
+Without a template. The profile creates a tool-owned `settings` folder (`contentFolder`, published, hidden from navigation and
+sitemap, at the top level) and places the four source containers (`/Listings/ListingCategory`, `/Listings/ListingHorsepower`,
+`/Listings/ListingTypes`, `/Listings/ListingRenew`, template-less folders) under it with everything they hold, so the items
+live at `/settings/<container>/<alias>`. The containers keep their URL names, which also keeps the sibling URL names of the
+13 items apart. The lookup pages have no template and answer 404 on the site, like the folders. Their old paths are redirected
+to the new place (a redirect is registered for every page whose URL changes; the target answers 404 as the old URL did).
+Profile keys: `settingsFolder` and `placements` (contracts/site-profile.md).
 
 | Umbraco type | Properties (editor) |
 |---|---|
@@ -150,12 +153,14 @@ home (contentPage)            /            (Kentico /Home, the default alias pat
 ├── contentPage               /aboutus, /contactus, /testimonials, /error, /notfound
 ├── articleList               /articles
 │   └── article  x6           /articles/<alias>
+├── brandList                 /search-featured (placed at the top level, U1)
+│   └── brand    x98 (10 of them unpublished, Q5)   /search-featured/<alias>
 ├── contentFolder (no template)  /listings
 │   ├── contentPage           /listings/brands, /listings/getaloan
-│   ├── brandList             /listings/search-featured
-│   │   └── brand    x98 (10 of them unpublished, Q5)   /listings/search-featured/<alias>
-│   └── contentFolder x5      /listings/listingmake (empty), listingcategory (4 items),
-│                             listinghorsepower (6), listingtypes (2), listingrenew (1)
+│   └── contentFolder         /listings/listingmake (empty)
+├── contentFolder (hidden, no template)  /settings (tool-owned, Q1)
+│   └── contentFolder x4      /settings/listingcategory (4 items), listinghorsepower (6),
+│                             listingtypes (2), listingrenew (1)
 └── contentFolder (no template)  /products
     ├── contentPage           /products/home
     └── productList           /products/pontoon-towers
@@ -164,13 +169,13 @@ home (contentPage)            /            (Kentico /Home, the default alias pat
 
 Rules:
 
-- Brand pages are served on the live site at `/search-featured/{brand
-  name}`, which is an application route that no longer exists. They are
-  placed under the `brandList` node, which stays below the `/Listings`
-  folder like in the source tree, so their Umbraco URL is
-  `/listings/search-featured/{alias}`. The old route is redirected for every
-  published brand (88 routes, 30 of them with a space in the name). A profile rule that places a page at the top level would serve the
-  live URLs directly; it is not implemented (follow-up T065).
+- Brand pages were served on the live site at `/search-featured/{brand
+  name}`, an application route that no longer exists. A placement rule in the
+  profile moves the `brandList` node from below `/Listings` to the top level with the
+  URL name `search-featured` (T065), so the 58 brands whose names have no space are
+  served at their old URL directly and need no redirect. The 30 brand routes with a space
+  in the name get a `renamed` redirect to the alias URL, and the old tree path
+  `/Listings/Search-Featured/...` is redirected to the new place (`url-path`).
 - Kentico folders become a `contentFolder` node without a template, so their
   children keep their paths. A folder URL returns 404, as in Kentico. A fixed
   alias whose path equals such a folder (the old `/products` alias of
@@ -290,7 +295,7 @@ Outputs:
 
 | # | Decision |
 |---|---|
-| Q1 | Lookup page types are migrated below their source containers, as template-less pages (a `settings` folder was planned, but the tool does not create folders that are not in the source tree), see 2.3. This goes beyond the brief's scope (listings) and is stated as such in the README |
+| Q1 | Lookup page types are migrated into a hidden, tool-owned `settings` folder, as template-less pages, below their source containers, see 2.3. This goes beyond the brief's scope (listings) and is stated as such in the README |
 | Q2 | Products are migrated as content **plus** SKU data (number, price, retail price, availability) as plain properties. Also beyond the brief's scope (e-commerce), stated in the README |
 | Q3 | Migrate only pages with editorial text; application shell pages are reported as skipped |
 | Q4 | First editable region goes to `bodyText`, the remaining regions to `additionalContent` (`Umbraco.RichText`) |

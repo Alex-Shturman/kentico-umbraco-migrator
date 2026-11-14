@@ -23,6 +23,7 @@ public sealed partial class PlanBuilder
         public TypeMapping? Mapping { get; init; }
         public string? ScheduleNote { get; init; }
         public string? RowClass { get; init; }
+        public bool IsSettings { get; init; }
         public string UrlName { get; set; } = string.Empty;
         public Node? Parent { get; set; }
         public int Depth { get; set; }
@@ -81,6 +82,8 @@ public sealed partial class PlanBuilder
             node.UrlName = ResolveUrlName(node);
         }
 
+        AddSettingsFolder(candidates, byAliasPath, home);
+        ApplyPlacements(candidates, byAliasPath, home);
         BreakParentCycles(candidates, home);
         AddUnlinkedRows(candidates, byAliasPath);
         CheckSiblingNames(candidates);
@@ -94,6 +97,71 @@ public sealed partial class PlanBuilder
             .ToList();
 
         return [.. sorted.Select(ToDocument)];
+    }
+
+    /// <summary>
+    /// The tool-owned settings folder: a top-level folder below the home page, published, hidden from navigation and sitemap.
+    /// Added before the placements so they can name it as a parent.
+    /// </summary>
+    private void AddSettingsFolder(List<Node> nodes, Dictionary<string, Node> byAliasPath, Node? home)
+    {
+        if (_profile.SettingsFolder is not { } rule)
+        {
+            return;
+        }
+
+        if (byAliasPath.ContainsKey(rule.Path))
+        {
+            Error(rule.Path, "The settings folder path is the path of a source page.");
+            return;
+        }
+
+        var node = new Node
+        {
+            Key = Keys.Derived("settings", rule.Path.ToLowerInvariant()),
+            OldPath = rule.Path,
+            Name = rule.Name,
+            TypeAlias = PlanAliases.Folder,
+            Source = new ValueSource(rule.Name, null, new Dictionary<string, object?>(), [], null),
+            Publish = true,
+            // After every source page of the top level, which are numbered from the source order.
+            SortOrder = int.MaxValue,
+            IsSettings = true,
+            UrlName = rule.Path.Trim('/'),
+            Parent = home,
+        };
+        nodes.Add(node);
+        byAliasPath[rule.Path] = node;
+    }
+
+    /// <summary>Moves the pages named by the profile's placements (and so everything below them) and sets their URL names.</summary>
+    private void ApplyPlacements(List<Node> nodes, Dictionary<string, Node> byAliasPath, Node? home)
+    {
+        foreach (var rule in _profile.Placements)
+        {
+            if (!byAliasPath.TryGetValue(rule.Path, out var node) || node.IsSettings)
+            {
+                Error(rule.Path, "Placement path does not resolve to a planned page.");
+                continue;
+            }
+
+            Node? parent;
+            if (rule.NewParentPath.Trim('/').Length == 0)
+            {
+                parent = home is not null && home != node ? home : null;
+            }
+            else if (!byAliasPath.TryGetValue(rule.NewParentPath, out parent) || parent == node)
+            {
+                Error(rule.Path, $"Placement parent path '{rule.NewParentPath}' does not resolve to a planned page.");
+                continue;
+            }
+
+            node.Parent = parent;
+            if (!string.IsNullOrWhiteSpace(rule.UrlName))
+            {
+                node.UrlName = rule.UrlName;
+            }
+        }
     }
 
     private Dictionary<int, SourceDocument>? _sourceById;
