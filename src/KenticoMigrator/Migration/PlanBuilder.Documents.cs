@@ -57,6 +57,7 @@ public sealed partial class PlanBuilder
         }
 
         PlanMedia(candidates);
+        PrepareAliases();
 
         var byNodeId = candidates.ToDictionary(n => n.Document!.NodeId);
         var byAliasPath = new Dictionary<string, Node>(StringComparer.OrdinalIgnoreCase);
@@ -329,7 +330,7 @@ public sealed partial class PlanBuilder
         node.Publish,
         BuildValues(node),
         node.OldPath,
-        [],
+        OldUrlsFor(node),
         node.ScheduleNote);
 
     private Dictionary<string, PlannedValue> BuildValues(Node node)
