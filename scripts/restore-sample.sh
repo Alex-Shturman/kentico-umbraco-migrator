@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Creates (or recreates) the Kentico11Sample database in the SQL Server container and prints counts.
-# Usage: SQL_CONTAINER=oib_sql_container scripts/restore-sample.sh
+# Usage: SQL_CONTAINER=<container> scripts/restore-sample.sh   (default kentico-migrator-sql, the docker-compose service)
 # The SA password is read inside the container from its own MSSQL_SA_PASSWORD (passed to sqlcmd through
 # SQLCMDPASSWORD, so it is neither on a command line nor printed).
 set -euo pipefail

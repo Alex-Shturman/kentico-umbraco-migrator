@@ -57,14 +57,15 @@ walk-through with the expected output of every step is [specs/001-kentico-umbrac
 the host setup is in [host/README.md](host/README.md) and the sample in [sample/README.md](sample/README.md).
 
 1. **Services.** Use an existing SQL Server container (`export SQL_CONTAINER=<name>`) or `docker compose --profile sql up -d sqlserver`
-   (`SQL_CONTAINER=kentico-migrator-sql`, set `MSSQL_SA_PASSWORD` first). Start Azurite with `docker compose up -d azurite`, or without
+   (`export SQL_CONTAINER=kentico-migrator-sql`, set `MSSQL_SA_PASSWORD` first). Start Azurite with `docker compose up -d azurite`, or without
    Docker: `npx --yes azurite@3.34.0 --silent --location "$TMPDIR/azurite" --blobHost 127.0.0.1 --blobPort 10000 --skipApiVersionCheck`.
    Create the empty target database: `docker exec $SQL_CONTAINER bash -c '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -Q "CREATE DATABASE PO_Umbraco"'`.
 2. **Sample source.** `scripts/restore-sample.sh` creates `Kentico11Sample` and prints the counts that
    [sample/README.md](sample/README.md) lists.
 3. **Target site.** Set the host secrets once (nothing secret is stored in files), trust the development certificate
    (`dotnet dev-certs https --trust`) and start the host. The first start installs Umbraco into the empty `PO_Umbraco` database
-   (about half a minute) and creates the API user. The back office is at `https://localhost:44317/umbraco`.
+   (about half a minute) and creates the API user. The back office is at `https://localhost:44317/umbraco`. In the connection string use port
+   1433 for your own container and 14333 for the compose service.
 
    ```bash
    cd host/UmbracoSite
@@ -111,9 +112,9 @@ overrides an environment variable.
 |---|---|---|
 | `Kentico:ConnectionString` | SQL Server connection string of the source (opened read-only) | yes |
 | `Kentico:MediaRoot` | Folder of media library files, when the profile does not set `mediaRoot` | no |
-| `Umbraco:BaseUrl` | Address of the Umbraco site | no |
-| `Umbraco:ClientId` | API user client id (`umbraco-back-office-` prefix) | no |
-| `Umbraco:ClientSecret` | API user secret | yes |
+| `Umbraco:BaseUrl` | Address of the Umbraco site; default `https://localhost:44317` | no |
+| `Umbraco:ClientId` | API user client id (`umbraco-back-office-` prefix); default `umbraco-back-office-migrator` | no |
+| `Umbraco:ClientSecret` | API user secret. Setting it enables the target; without it the tool runs plan-only | yes |
 | `Umbraco:AllowUntrustedCertificate` | `true` for the local development certificate only | no |
 
 The site profile ([contract](specs/001-kentico-umbraco-migrator/contracts/site-profile.md), example [profiles/sample.json](profiles/sample.json))
@@ -126,8 +127,9 @@ are not uploaded, the page-type mappings with their fields, re-parenting rules a
   Umbraco is not updated and is listed as "edited in Umbraco"; `--overwrite-edited` writes it again.
 - **Nothing is deleted or unpublished.** Pages that were migrated earlier and are no longer in the source are listed as "missing in
   source, review manually". Redirects are never removed.
-- **Publishing.** A page is published after it is created or updated. A later run never publishes a page that is not published
-  (an editor may have unpublished it on purpose); such pages are listed for review as "planned as published but not published in
+- **Publishing.** A page the run creates (or restores from the recycle bin) is published. A page the run only updates, moves or
+  overwrites is published again only when it was published before the write, so a page an editor unpublished stays unpublished
+  (an editor may have done it on purpose); such pages are listed for review as "planned as published but not published in
   Umbraco". A page the plan does not publish (for example brand rows without a page) is never published.
 - **Media carry no stored fingerprint.** A media item whose name and folder are the planned ones is unchanged; one an editor renamed
   or moved is reported as edited and left alone unless `--overwrite-edited` is given. File bytes are not compared, and media that
@@ -179,7 +181,10 @@ dotnet test --filter "Category!=Integration"
 scripts/check-repo.sh
 ```
 
-Integration tests (`Category=Integration`) need the host, Azurite and the restored sample. The repository guard
+Integration tests (`dotnet test --filter "Category=Integration"`) need the restored sample database, whose connection string goes
+into the environment variable `KENTICO_SAMPLE_CS`, and, for the tests that call the host, a running host with Azurite and the
+migrator's `Umbraco:ClientSecret` (user secrets of project `KenticoMigrator`, or the environment variable `Umbraco__ClientSecret`;
+`Umbraco__BaseUrl` and `Umbraco__ClientId` are optional and default as above). Tests whose configuration is missing are skipped. The repository guard
 `scripts/check-repo.sh` fails when client material or an em dash is tracked. The specification, plan, tasks and contracts are in
 [specs/001-kentico-umbraco-migrator/](specs/001-kentico-umbraco-migrator/); the discovery and mapping documents are in
 [docs/DISCOVERY.md](docs/DISCOVERY.md) and [docs/MAPPING.md](docs/MAPPING.md).

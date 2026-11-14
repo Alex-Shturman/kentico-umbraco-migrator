@@ -1,15 +1,16 @@
 # Umbraco host
 
 Umbraco 17 site the migrator writes to. It runs on `https://localhost:44317`, uses the database
-`PO_Umbraco` on the local SQL Server container, stores media in Azure Blob storage (Azurite in
+`PO_Umbraco` on the local SQL Server container (`$SQL_CONTAINER`), stores media in Azure Blob storage (Azurite in
 development) and adds one endpoint for redirects.
 
 ## Prerequisites
 
-- The .NET SDK from `global.json`, the SQL Server container `oib_sql_container` and an empty database:
+- The .NET SDK from `global.json`, a SQL Server 2022 container (`export SQL_CONTAINER=<its name>`; `kentico-migrator-sql` for the
+  docker-compose service) and an empty database:
 
   ```bash
-  docker exec oib_sql_container bash -c '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -Q "CREATE DATABASE PO_Umbraco"'
+  docker exec $SQL_CONTAINER bash -c '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -Q "CREATE DATABASE PO_Umbraco"'
   ```
 
 - The development certificate: `dotnet dev-certs https --trust`.
@@ -38,7 +39,7 @@ refused by Azurite, so to see the uploaded blobs open an image URL through the h
 ## Secrets
 
 Nothing secret is stored in files. Set these with `dotnet user-secrets` (the host has its own
-`UserSecretsId`):
+`UserSecretsId`). In the connection string use port 1433 for your own container and 14333 for the compose service:
 
 ```bash
 cd host/UmbracoSite
@@ -99,7 +100,7 @@ Back office: `https://localhost:44317/umbraco`. Swagger: `https://localhost:4431
 
 `POST /umbraco/management/api/v1/kentico-migration/redirects`, authorised like the Management API
 (Content section access). The contract is
-`specs/001-kentico-umbraco-migrator/contracts/redirect-endpoint.md`. Two behaviours matter:
+`specs/001-kentico-umbraco-migrator/contracts/redirect-endpoint.md`. Four behaviours matter:
 
 - URLs are stored percent-decoded, lower-cased and without a trailing slash, because Umbraco looks
   redirects up that way.

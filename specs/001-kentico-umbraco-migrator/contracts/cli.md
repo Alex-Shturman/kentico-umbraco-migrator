@@ -27,7 +27,7 @@ user secrets (project `KenticoMigrator`), then command-line `--Key=Value`.
 
 | Key | Example | Secret |
 |---|---|---|
-| `Kentico:ConnectionString` | `Server=localhost,1433;Database=Kentico11Sample;...` | yes |
+| `Kentico:ConnectionString` | `Server=localhost,1433;Database=Kentico11Sample;...` (port 1433 for your own container, 14333 for the compose service) | yes |
 | `Kentico:MediaRoot` | `sample/media` | no |
 | `Umbraco:BaseUrl` | `https://localhost:44317` (also the default when empty) | no |
 | `Umbraco:ClientId` | `umbraco-back-office-migrator` (also the default when empty) | no |

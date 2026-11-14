@@ -6,8 +6,10 @@ running, and the .NET 10 SDK. Contracts: [cli](contracts/cli.md),
 
 ## Prerequisites
 
-- A SQL Server 2022 container. Either an existing one (set `SQL_CONTAINER` to its name) or
-  `docker compose --profile sql up -d sqlserver` (set `SQL_CONTAINER=kentico-migrator-sql`).
+- A SQL Server 2022 container. Either an existing one (`export SQL_CONTAINER=<its name>`) or
+  `docker compose --profile sql up -d sqlserver` (set `MSSQL_SA_PASSWORD` first, then `export SQL_CONTAINER=kentico-migrator-sql`).
+  Connection strings below use port 1433 for your own container and 14333 for the compose service.
+- An empty target database: `docker exec $SQL_CONTAINER bash -c '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -Q "CREATE DATABASE PO_Umbraco"'`.
 - Azurite: `docker compose up -d azurite`.
 - `dotnet new install Umbraco.Templates::17.*` is not needed to run, only to regenerate the host.
 
@@ -21,10 +23,19 @@ Expected: the script prints the counts table from `sample/README.md` and they ma
 
 ## 2. Target site
 
+The same secret block as in [host/README.md](../../host/README.md) (Secrets) and the README; set the imaging key before the
+first start and trust the development certificate once (`dotnet dev-certs https --trust`):
+
 ```bash
-dotnet user-secrets --project host/UmbracoSite set "ConnectionStrings:umbracoDbDSN" "<SQL Server connection string to PO_Umbraco>"
-dotnet user-secrets --project host/UmbracoSite set "Umbraco:CMS:Unattended:UnattendedUserPassword" "<admin password>"
-dotnet user-secrets --project host/UmbracoSite set "Migration:ApiClient:Secret" "<client secret>"
+cd host/UmbracoSite
+dotnet user-secrets set "ConnectionStrings:umbracoDbDSN" "Server=localhost,1433;Database=PO_Umbraco;User Id=sa;Password=<sa password>;TrustServerCertificate=True;Encrypt=True"
+dotnet user-secrets set "Umbraco:CMS:Unattended:InstallUnattended" "true"
+dotnet user-secrets set "Umbraco:CMS:Unattended:UnattendedUserName" "Migrator Admin"
+dotnet user-secrets set "Umbraco:CMS:Unattended:UnattendedUserEmail" "admin@example.test"
+dotnet user-secrets set "Umbraco:CMS:Unattended:UnattendedUserPassword" "<admin password>"
+dotnet user-secrets set "Migration:ApiClient:Secret" "<client secret>"
+dotnet user-secrets set "Umbraco:CMS:Imaging:HMACSecretKey" "$(openssl rand -base64 64)"
+cd ../..
 dotnet run --project host/UmbracoSite
 ```
 
@@ -34,8 +45,8 @@ created (first start) or already exists.
 ## 3. Preview
 
 ```bash
-dotnet user-secrets --project src/KenticoMigrator set "Kentico:ConnectionString" "<connection string to Kentico11Sample>"
-dotnet user-secrets --project src/KenticoMigrator set "Umbraco:ClientSecret" "<client secret>"
+dotnet user-secrets --project src/KenticoMigrator set "Kentico:ConnectionString" "Server=localhost,1433;Database=Kentico11Sample;User Id=sa;Password=<sa password>;TrustServerCertificate=True;Encrypt=True"
+dotnet user-secrets --project src/KenticoMigrator set "Umbraco:ClientSecret" "<the same client secret>"
 dotnet run --project src/KenticoMigrator -- plan --profile profiles/sample.json
 ```
 
@@ -52,7 +63,7 @@ dotnet run --project src/KenticoMigrator -- migrate --profile profiles/sample.js
 Expected: exit code 0; the console shows `schema: 15 Created`, `media: 19 Created` (9 folders, 9 images and 1 file), `documents: 23 Created`,
 `redirects: 28 planned; 28 created, 0 existing, 0 failed` and `links: 8 rewritten, 1 external, 1 to the application,
 1 unresolved`. The site shows the sample pages with their images and files at `https://localhost:44317/media/<token>/<file>`:
-the host serves them from the Azurite `media` container (nothing is stored on the host's disk). The back office lists the 27
+the host serves them from the Azurite `media` container (nothing is stored on the host's disk). The back office lists the 28
 redirects under "URL Redirect Management".
 
 ## 5. Old URLs

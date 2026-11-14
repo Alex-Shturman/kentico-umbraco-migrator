@@ -7,7 +7,8 @@ formats. Nothing here comes from a client.
 ## Restore
 
 ```bash
-SQL_CONTAINER=oib_sql_container scripts/restore-sample.sh
+export SQL_CONTAINER=<your SQL Server container>   # kentico-migrator-sql for the docker-compose service
+scripts/restore-sample.sh
 ```
 
 The script copies `kentico11-sample.sql` into the container, runs it with the container's own
@@ -99,17 +100,7 @@ Own hosts needed in the profile: `kayaks.example` and `www.kayaks.example`.
 - `/contact` and `/visit` are aliases of `/Contact`. `/{title}-i{ID}` is a wildcard alias on the
   excluded `/Account/Profile` page (reported, not migrated).
 - `/About` has a hand-set `DocumentUrlPath` of `/about-the-shop`.
-- `expected-urls.txt` lists 25 old URLs with the expected status and final path
+- `expected-urls.txt` lists 26 old URLs with the expected status and final path
   (`<old url> <status> <final path>`). Final paths for redirects follow the verified Umbraco 17 routing (lower case, relative, trailing slash)
-  and the catalog layout `/catalog/brands/<alias>`. All 25 lines were confirmed against a real run (`scripts/check-urls.sh`);
+  and the catalog layout `/catalog/brands/<alias>`. All 26 lines were confirmed against a real run (`scripts/check-urls.sh`);
   `/Home` is a 200, not a redirect, because the home page is also served at its own URL segment.
-
-## Profile values for Track 3
-
-`profiles/sample.json` is owned by Track 3. The sample needs these two values in it:
-
-```json
-"notUploadedPaths": [ "/Downloads/Paddling-Map" ],
-"mediaRoot": "sample/media",
-"ownHosts": [ "kayaks.example", "www.kayaks.example" ]
-```
