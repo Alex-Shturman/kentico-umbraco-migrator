@@ -1,0 +1,39 @@
+@using Umbraco.Cms.Core.Models.PublishedContent
+@using Umbraco.Cms.Web.Common.PublishedModels
+@using Umbraco.Extensions
+@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage
+@{
+    Layout = "migratedLayout.cshtml";
+    var heading = Model.Value<string>("title");
+    if (string.IsNullOrWhiteSpace(heading)) { heading = Model.Name; }
+    var teaser = Model.Value<IPublishedContent>("teaserImage");
+    var images = Model.Value<IEnumerable<IPublishedContent>>("images");
+}
+<h1>@heading</h1>
+@if (!string.IsNullOrWhiteSpace(Model.Value<string>("introText")))
+{
+    <div class="intro">@Html.Raw(Model.Value<string>("introText"))</div>
+}
+@if (teaser is not null)
+{
+    <img src="@teaser.Url()" alt="@teaser.Name" />
+}
+@if (!string.IsNullOrWhiteSpace(Model.Value<string>("bodyText")))
+{
+    <div class="body">@Html.Raw(Model.Value<string>("bodyText"))</div>
+}
+@if (!string.IsNullOrWhiteSpace(Model.Value<string>("additionalContent")))
+{
+    <div class="additional">@Html.Raw(Model.Value<string>("additionalContent"))</div>
+}
+@if (images is not null)
+{
+    foreach (var image in images)
+    {
+        <img src="@image.Url()" alt="@image.Name" />
+    }
+}
+@if (Model.HasValue("price"))
+{
+    <p class="price">@Model.Value("price")</p>
+}
