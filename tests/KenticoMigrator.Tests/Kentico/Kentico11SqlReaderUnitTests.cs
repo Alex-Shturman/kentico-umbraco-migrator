@@ -77,6 +77,18 @@ public sealed class Kentico11SqlReaderMediaPathTests : IDisposable
     }
 
     [Fact]
+    public async Task Filesystem_root_as_media_root_works()
+    {
+        // A root such as "/" already ends with a separator; the prefix must not become "//".
+        var fsRoot = Path.GetPathRoot(_root)!;
+        var folder = Path.GetRelativePath(fsRoot, Path.Combine(_root, "Gallery"));
+
+        await using var stream = await Reader(fsRoot).OpenMediaFileAsync(File_(folder, "a.txt"), CancellationToken.None);
+
+        Assert.Equal(5, stream.Length);
+    }
+
+    [Fact]
     public async Task Rooted_file_path_is_rejected()
     {
         var rooted = Path.Combine(_root, "Gallery", "a.txt");

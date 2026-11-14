@@ -122,7 +122,9 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
 
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_mediaRoot));
         var path = Path.GetFullPath(Path.Combine(root, file.LibraryFolder, file.FilePath));
-        if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        // A filesystem root ("/") keeps its separator after trimming, so do not add a second one.
+        var prefix = root.EndsWith(Path.DirectorySeparatorChar) ? root : root + Path.DirectorySeparatorChar;
+        if (!path.StartsWith(prefix, StringComparison.Ordinal))
         {
             throw new InvalidDataException($"Media file path '{file.FilePath}' points outside the media root.");
         }
@@ -313,25 +315,26 @@ public sealed partial class Kentico11SqlReader : IKenticoReader
         // Attachment group fields have no column in the table.
         var columns = info.Fields.Where(f => f.DataType != "docattachments").Select(f => f.Column).ToList();
 
-        var rows = await connection.QueryAsync(new CommandDefinition($"SELECT * FROM {table}", cancellationToken: ct));
+        // Read the table's own column names first: SQL Server names are case-insensitive, the form
+        // definition may spell them differently, and only the mapped columns plus the key are selected.
+        var actual = await connection.QueryAsync<string>(new CommandDefinition(
+            "SELECT name FROM sys.columns WHERE object_id = OBJECT_ID(@table)", new { table }, cancellationToken: ct));
+        var wanted = columns.Prepend(keyColumn).ToList();
+        var resolved = CoupledColumns.Resolve(info.ClassName, info.TableName!, wanted, actual);
+
+        var select = string.Join(", ", resolved.Select(name => $"[{name.Replace("]", "]]")}]"));
+        var rows = await connection.QueryAsync(new CommandDefinition($"SELECT {select} FROM {table}", cancellationToken: ct));
 
         var map = new Dictionary<int, IReadOnlyDictionary<string, object?>>();
         foreach (var row in rows.Cast<IDictionary<string, object?>>())
         {
-            // SQL Server column names are case-insensitive, the form definition may spell them differently.
-            var lookup = new Dictionary<string, object?>(row, StringComparer.OrdinalIgnoreCase);
-            var id = (int)Column(info, lookup, keyColumn)!;
-            map[id] = columns.ToDictionary(c => c, c => Column(info, lookup, c));
+            var id = (int)row[resolved[0]]!;
+            // Index 0 is the key; the values keep the form definition's column names.
+            map[id] = columns.Select((c, i) => (Column: c, Value: row[resolved[i + 1]])).ToDictionary(x => x.Column, x => x.Value);
         }
 
         return map;
     }
-
-    private static object? Column(ClassInfo info, Dictionary<string, object?> row, string column) =>
-        row.TryGetValue(column, out var value)
-            ? value
-            : throw new InvalidDataException(
-                $"Page type {info.ClassName}: column '{column}' from the form definition is missing in table {info.TableName}.");
 
     /// <summary>Rows of the requested classes that no document points at (rows were read once, with the documents).</summary>
     private static IReadOnlyDictionary<string, IReadOnlyList<SourceRow>> ReadUnlinkedRows(
